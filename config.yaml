@@ -1,0 +1,45 @@
+# Heinzy — single versioned config (Infra task S5)
+# Rule: NO tunable constants in source. Everything that changes retrieval or
+# model behavior lives here. The sha256 of this file is written into every
+# eval result and every event-log record so any run is reproducible.
+
+version: "0.1.0"
+
+# ---- Chunking (ingest M3) --------------------------------------------------
+chunk:
+  target_tokens: 512      # tune me — see PRD Note on Context Entity Recall
+  overlap_tokens: 64
+
+# ---- Embedding (ingest M4 + retrieval) -------------------------------------
+# Local, open-weight embedder so nothing leaves local infra (PRD Data/Compute
+# constraint). NOTE: this is the *retrieval* embedder, distinct from the
+# generation model (Gemma) below — Gemma does not produce embeddings.
+embed:
+  model_tag: "BAAI/bge-small-en-v1.5"
+  dimension: 384
+
+# ---- Retrieval (A2) --------------------------------------------------------
+retrieval:
+  k: 5                    # top-k chunks returned; read from config, never hardcoded
+  score_floor: 0.0        # drop chunks below this similarity (0 = keep all)
+
+# ---- Vector store (S4) -----------------------------------------------------
+# Accessed only through the LlamaIndex abstraction so the store swaps cheaply.
+# "memory" runs tonight with zero infra. A teammate owns wiring the real DB;
+# they change `backend` here and implement one adapter — retrieval code is
+# untouched.
+vector_store:
+  backend: "memory"       # memory | chroma | <db-owner-adds-more>
+  persist_dir: "data/index"
+
+# ---- Generation model (S3) -------------------------------------------------
+# Recorded for reproducibility + stamped into eval output. Serving endpoint is
+# a separate infra task; retrieval does not call this.
+model:
+  tag: "gemma-2-12b"
+  quantization: "Q4_K_M"
+  endpoint: "${MODEL_ENDPOINT}"   # filled from env, never committed
+
+# ---- Prompt versioning -----------------------------------------------------
+prompt:
+  version: "p0"
