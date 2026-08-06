@@ -1,0 +1,27 @@
+{
+  "$schema": "http://json-schema.org/draft-07/schema#",
+  "title": "Heinzy Audit Log Event",
+  "type": "object",
+  "properties": {
+    "timestamp": { "type": "string", "format": "date-time" },
+    "advisor_id": { "type": "string" },
+    "query": { "type": "string" },
+    "retrieval_call": {
+      "type": "object",
+      "properties": {
+        "status": { "type": "string" },
+        "chunks_returned": { "type": "integer" }
+      }
+    },
+    "answer": { "type": "string" },
+    "policy_evaluation": {
+      "type": "object",
+      "properties": {
+        "action_denied": { "type": "boolean" },
+        "hitl_triggered": { "type": "boolean" },
+        "abstention_triggered": { "type": "boolean" }
+      }
+    }
+  },
+  "required": ["timestamp", "advisor_id", "query", "policy_evaluation"]
+}

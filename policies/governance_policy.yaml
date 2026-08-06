@@ -1,0 +1,23 @@
+apiVersion: governance.toolkit/v1
+name: mism-advising-policy
+agents: ["heinzy-advisor"]
+default_action: allow
+
+rules:
+  - name: block-write-actions
+    condition: "action.type in ['create', 'update', 'delete', 'insert']"
+    action: deny
+    description: "Phase 1: Agent is strictly read-only. No modifications allowed."
+    priority: 100
+
+  - name: enforce-domain-allowlist
+    condition: "action.type == 'web_search' and not action.url.endswith('.cmu.edu')"
+    action: deny
+    description: "Phase 2: Web searches restricted to official university domains."
+    priority: 90
+
+  - name: require-human-for-search
+    condition: "action.type == 'web_search' and action.url.endswith('.cmu.edu')"
+    action: require_approval
+    approvers: ["advising-staff"]
+    priority: 80
