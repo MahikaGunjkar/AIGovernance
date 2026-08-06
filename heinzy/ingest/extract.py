@@ -11,6 +11,6 @@ from .types import ExtractConfig, PageRecord
 
 
 def extract_pages(doc_id: str, pdf_path: Path, cfg: ExtractConfig) -> list[PageRecord]:
-    assert doc_id and pdf_path.exists(),
+    assert doc_id and pdf_path.exists(), "doc_id must be set and pdf_path must exist"
 
     raise NotImplementedError

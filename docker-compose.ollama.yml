@@ -1,0 +1,33 @@
+# Shared Gemma inference host (Infra task S3).
+#
+# Run this on ONE machine with a decent GPU (or CPU-only for a slow demo).
+# Teammates do NOT run this — they only set MODEL_ENDPOINT in their .env to
+# http://<this-host>:11434
+#
+# Operator (on the shared host):
+#   docker compose -f docker-compose.ollama.yml up -d
+#   docker compose -f docker-compose.ollama.yml exec ollama ollama pull gemma2:9b
+#   # optional / if VRAM allows: gemma2:12b
+#
+# Smoke from another machine:
+#   curl http://<host>:11434/api/tags
+#
+# GPU: requires NVIDIA drivers + Docker GPU support. If the host has no GPU,
+# delete the `gpus:` line; Ollama will run on CPU (much slower).
+
+services:
+  ollama:
+    image: ollama/ollama:latest
+    container_name: heinzy-ollama
+    ports:
+      - "11434:11434"
+    environment:
+      # Bind all interfaces so LAN / VPN teammates can connect.
+      OLLAMA_HOST: "0.0.0.0:11434"
+    volumes:
+      - ollama_data:/root/.ollama
+    restart: unless-stopped
+    gpus: all
+
+volumes:
+  ollama_data:
