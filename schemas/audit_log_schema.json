@@ -4,7 +4,7 @@
   "type": "object",
   "properties": {
     "timestamp": { "type": "string", "format": "date-time" },
-    "advisor_id": { "type": "string" },
+    "agent_id": { "type": "string" },
     "query": { "type": "string" },
     "retrieval_call": {
       "type": "object",
@@ -23,5 +23,5 @@
       }
     }
   },
-  "required": ["timestamp", "advisor_id", "query", "policy_evaluation"]
+  "required": ["timestamp", "agent_id", "query", "policy_evaluation"]
 }
