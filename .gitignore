@@ -1,0 +1,5 @@
+__pycache__/
+*.pyc
+rag_pipe/.index/
+.idea/
+CLAUDE.md
