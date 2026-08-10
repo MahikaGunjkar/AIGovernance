@@ -20,3 +20,4 @@ dist/
 # editor / local notes
 .idea/
 CLAUDE.md
+.claude/
