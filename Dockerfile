@@ -18,9 +18,15 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Now the source.
+# Now the source. Install with the `store` extra so the Chroma thin client is
+# available (config.yaml's default vector_store.backend is chroma).
 COPY . .
-RUN pip install --no-cache-dir -e .
+RUN pip install --no-cache-dir -e ".[store]"
+
+# Pre-warm the fastembed model cache at build time (reads the tag straight out
+# of the checked-in config.yaml, not hardcoded here) so containers don't pay a
+# ~130MB download on first run -- fully self-contained image.
+RUN python -c "from heinzy.common.config import load_config; from fastembed import TextEmbedding; c = load_config(); TextEmbedding(model_name=c.embed.model_tag)"
 
 # Default command runs the retrieval smoke test so `docker run` proves the
 # image works end to end. Override for real entrypoints.
