@@ -1,11 +1,20 @@
 # Pinned for reproducibility (Infra task S2). No floating ranges.
 pyyaml==6.0.2
 
-# --- Optional, install for real semantic embeddings (not pinned into the base
-# --- image to keep it small; see README "Real embeddings"):
-# sentence-transformers==3.0.1
+# Ingest (M1/M3/M4): no fallback path -- required for extract/chunk/embed to run.
+pymupdf==1.28.2
+pymupdf4llm==1.28.2
+tiktoken==0.13.0
+
+# Retrieval + ingest embeddings (A2/M4). Replaced sentence-transformers so query
+# and stored vectors are guaranteed to come from the same library/model.
+fastembed==0.8.0
+
+# Generation: calls Ollama's HTTP API.
+requests==2.34.2
 
 # --- Optional, Chroma HTTP thin client for shared vector store (S4):
 # chromadb-client==1.5.9
 # Or: pip install -e ".[store]"
 # (Use thin client — full `chromadb` needs MSVC build tools on Windows.)
+

@@ -1,31 +1,24 @@
 """
-Ingest the real MISM handbook (data/corpus/) and populate the retrieval store,
-bridging M0-M6 ingest output into the A2/S4 retrieval layer with real data.
-The other smoke scripts prove retrieval works against invented placeholder
-chunks; this one proves it end to end against the actual handbook.
+run for initial RAG of new document
 
-Run from repo root:
-    python scripts/ingest_and_retrieve_demo.py
-    python scripts/ingest_and_retrieve_demo.py --query "how many electives"
+pre:  cfg has chunk/embed/vector_store sections (see config.yaml)
+post: every PDF in corpus_dir is represented in the returned store, keyed by
+      doc_id; documents the store already has (per store.has_doc) are
+      skipped, not re-ingested
 """
 from __future__ import annotations
 
-import argparse
 from pathlib import Path
 
-from heinzy.common.config import load_config
 from heinzy.ingest import chunk, embed, extract, index, registry, structure, verify
 from heinzy.ingest.types import ChunkConfig, EmbedConfig, IndexConfig, VerifyConfig
-from heinzy.retrieval.retrieve import Retriever
-from heinzy.retrieval.store import StoredChunk, get_store
+from heinzy.retrieval.store import StoredChunk, VectorStore, get_store
 
-CORPUS_DIR = Path("data/corpus")
+DEFAULT_CORPUS_DIR = Path("data/corpus")
 
 
-def ingest_and_populate_store(cfg):
-    manifest = registry.register_corpus(CORPUS_DIR, Path("data/index/manifest.json"))
-
-    store = get_store(
+def build_store(cfg) -> VectorStore:
+    return get_store(
         cfg.vector_store.backend,
         persist_dir=getattr(cfg.vector_store, "persist_dir", None),
         host=getattr(cfg.vector_store, "host", None) or None,
@@ -33,7 +26,16 @@ def ingest_and_populate_store(cfg):
         collection=getattr(cfg.vector_store, "collection", None) or "heinzy",
     )
 
+
+def ingest_and_populate_store(cfg, corpus_dir: Path = DEFAULT_CORPUS_DIR) -> VectorStore:
+    manifest = registry.register_corpus(corpus_dir, Path("data/index/manifest.json"))
+    store = build_store(cfg)
+
     for entry in manifest.entries.values():
+        if store.has_doc(entry.doc_id):
+            print(f"already indexed, skipping ingest: {entry.pdf_path.name}")
+            continue
+
         pages = extract.extract_pages(entry.doc_id, entry.pdf_path, None)
         blocks = structure.build_sections(pages, None)
         chunks = chunk.chunk_blocks(
@@ -52,7 +54,6 @@ def ingest_and_populate_store(cfg):
         if not report.passed:
             print(f"verify FAILED for {entry.pdf_path.name}: {report.failures}")
 
-        # source_pages lives on Block, not Chunk -- recover it via section_path
         pages_by_section = {b.section_path: b.source_pages for b in blocks}
         vectors_by_id = {e.chunk_id: e.vector for e in embedded}
 
@@ -70,28 +71,3 @@ def ingest_and_populate_store(cfg):
         print(f"ingested {entry.pdf_path.name}: {len(pages)} pages -> {len(chunks)} chunks")
 
     return store
-
-
-def main() -> None:
-    ap = argparse.ArgumentParser()
-    ap.add_argument("--query", default="What are the required courses?")
-    ap.add_argument("--k", type=int, default=None)
-    args = ap.parse_args()
-
-    cfg = load_config()
-    store = ingest_and_populate_store(cfg)
-    print(f"\nstore populated: {store.count()} chunks\n")
-
-    retriever = Retriever(cfg, store=store)
-    result = retriever.retrieve(args.query, k=args.k)
-
-    print(f"query: {result.query}")
-    print(f"embedder: {result.embed_model} "
-          f"({'semantic' if result.is_semantic else 'HASH-FALLBACK, not semantic'})\n")
-    for rank, h in enumerate(result.hits, 1):
-        print(f"  {rank}. score={h.score:.4f}  [{h.section_path}]  p{h.source_pages}")
-        print(f"     {h.text[:150]}...")
-
-
-if __name__ == "__main__":
-    main()

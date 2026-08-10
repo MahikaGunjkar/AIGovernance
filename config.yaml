@@ -29,7 +29,7 @@ retrieval:
 # + tests offline. Team shared DB: run docker-compose.chroma.yml on the host,
 # set backend to "chroma", and point CHROMA_HOST at that machine (Mac/Windows).
 vector_store:
-  backend: "memory"       # memory | chroma
+  backend: "chroma"       # memory | chroma
   persist_dir: "data/index"   # reserved for local adapters; unused by HTTP chroma
   host: "${CHROMA_HOST}"      # 127.0.0.1 on host operator; LAN IP for teammates
   port: 8000

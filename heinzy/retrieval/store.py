@@ -55,6 +55,8 @@ class VectorStore(Protocol):
 
     def count(self) -> int: ...
 
+    def has_doc(self, doc_id: str) -> bool: ...
+
 
 def _cosine(a: list[float], b: list[float]) -> float:
     dot = sum(x * y for x, y in zip(a, b))
@@ -92,6 +94,9 @@ class InMemoryStore:
 
     def count(self) -> int:
         return len(self._items)
+
+    def has_doc(self, doc_id: str) -> bool:
+        return any(it.doc_id == doc_id for it in self._items)
 
 
 def get_store(backend: str, **kwargs) -> VectorStore:

@@ -9,14 +9,20 @@ description = "Heinzy — governed advising assistant (retrieval + governance la
 requires-python = ">=3.11"
 dependencies = [
     "pyyaml>=6.0.1",
+    # Ingest (M1/M3/M4): no fallback path if these are missing -- extract_pages,
+    # chunk_blocks, and embed_chunks all hard-crash without them.
+    "pymupdf>=1.28.0",
+    "pymupdf4llm>=1.28.0",
+    "tiktoken>=0.13.0",
+    # Retrieval + ingest embeddings (A2/M4). Small (~130MB), CPU-friendly, no
+    # multi-GB download -- replaced sentence-transformers so query vectors and
+    # stored vectors are guaranteed to come from the same library/model.
+    "fastembed>=0.8.0",
+    # Generation (calls Ollama's HTTP API).
+    "requests>=2.31.0",
 ]
 
 [project.optional-dependencies]
-# Real embedding model. Optional so the pipeline runs (on the hash fallback)
-# without a multi-GB download during setup.
-embed = [
-    "sentence-transformers>=3.0.0",
-]
 # Shared Chroma HTTP thin client (S4). Avoids native hnswlib builds on Windows.
 # Server runs via docker-compose.chroma.yml — do not also install full `chromadb`.
 # Pin major with the Docker image tag in docker-compose.chroma.yml.
