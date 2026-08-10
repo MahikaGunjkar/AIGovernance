@@ -1,5 +1,22 @@
+# secrets / env
+.env
+# local team ops notes (not for PRs)
+TEAM_INFRA_NOTES.md
+# data artifacts — corpus PDFs and built indexes are shared out of band (S6),
+# not committed
+data/corpus/*
+data/index/*
+data/logs/*
+!data/corpus/.gitkeep
+!data/index/.gitkeep
+!data/logs/.gitkeep
+# python
 __pycache__/
 *.pyc
-rag_pipe/.index/
+*.egg-info/
+.pytest_cache/
+build/
+dist/
+# editor / local notes
 .idea/
 CLAUDE.md

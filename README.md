@@ -21,6 +21,7 @@ pip install -e .
 
 # Prove the retrieval pipeline works end to end (uses placeholder chunks):
 python scripts/smoke_retrieval.py
+# Also appends an A5 audit line to data/logs/retrieval.jsonl when event_log.enabled.
 
 # Change k without editing any source — it's read from config:
 python scripts/smoke_retrieval.py --k 2 --query "internship waiver"
@@ -45,15 +46,89 @@ pip install -e ".[embed]"   # installs sentence-transformers, downloads BGE
 
 The output then reports `semantic` and rankings become meaningful.
 
-### Docker
+### Docker — Heinzy app image (S2)
 
 ```bash
 docker build -t heinzy .
 docker run --rm heinzy          # runs the retrieval smoke test
 ```
 
-The image runs the Python code only. The Gemma 12B model is served separately
-(task S3); this container reaches it via `MODEL_ENDPOINT`.
+This image runs the Python retrieval/ingest code only. It does **not** bundle
+Gemma weights.
+
+### Shared Gemma host (S3) — one machine for the whole team
+
+Pattern: **one shared Ollama host**, everyone else only sets `MODEL_ENDPOINT`.
+
+| Role | What they do |
+|------|----------------|
+| **Host operator** (one person / one GPU box) | Runs [`docker-compose.ollama.yml`](docker-compose.ollama.yml), pulls the model, keeps port `11434` reachable on LAN/VPN |
+| **Everyone else** | Copy `.env.template` → `.env`, set `MODEL_ENDPOINT=http://<host-ip-or-name>:11434` |
+
+**Host operator setup**
+
+```bash
+# On the shared machine (Docker + NVIDIA GPU recommended):
+docker compose -f docker-compose.ollama.yml up -d
+
+# Pull once (cached in the named volume). Prefer 9b on 8GB VRAM; 12b if it fits:
+docker compose -f docker-compose.ollama.yml exec ollama ollama pull gemma2:9b
+# docker compose -f docker-compose.ollama.yml exec ollama ollama pull gemma2:12b
+```
+
+Tell teammates the reachable URL (e.g. `http://10.0.0.12:11434`). They put that
+in `.env` — nothing else to install for the model.
+
+**Teammate check** (from any machine that can reach the host):
+
+```bash
+curl http://<host>:11434/api/tags
+```
+
+**Notes**
+
+- Keep the host on a private network / VPN. Ollama on `11434` has no app-level
+  auth in this setup — do not expose it to the public internet.
+- Open firewall TCP `11434` to teammates only.
+- If the host has no GPU, remove the `gpus: all` line in the compose file;
+  inference still works on CPU, just slowly.
+- Align `config.yaml` → `model.tag` with the Ollama model you pulled
+  (`gemma2:9b` / `gemma2:12b`) when A3 lands. Recorded tag is for reproducibility.
+- Generation/answering (A3) is not implemented yet; this only stands up the
+  shared endpoint the team will call.
+
+### Shared Chroma host (S4) — one machine for the whole team
+
+Same pattern as Gemma: **one shared Chroma Docker service**, Mac/Windows clients
+only set `CHROMA_HOST`. Default config stays `backend: memory` so clone + pytest
+work offline.
+
+| Role | What they do |
+|------|----------------|
+| **Host operator** | Runs [`docker-compose.chroma.yml`](docker-compose.chroma.yml), opens firewall TCP **8000** (Private), keeps it up |
+| **Everyone else** | `pip install -e ".[store]"` (thin `chromadb-client`, Mac/Windows), set `CHROMA_HOST=<host-ip>` in `.env`, set `vector_store.backend: chroma` |
+
+**Host operator setup** (Windows or Mac Docker Desktop — CPU only):
+
+```bash
+docker compose -f docker-compose.chroma.yml up -d
+curl http://127.0.0.1:8000/api/v2/heartbeat   # or /api/v1/heartbeat on older images
+```
+
+**Teammate / host client check:**
+
+```bash
+pip install -e ".[store]"
+# .env: CHROMA_HOST=127.0.0.1   (host) or CHROMA_HOST=<lan-ip> (teammates)
+# config.yaml: vector_store.backend: chroma
+python scripts/smoke_store.py
+```
+
+**Notes**
+
+- Do not expose `:8000` to the public internet (no app-level auth here).
+- Retrieval code never imports Chroma — only `heinzy/retrieval/stores/chroma_store.py`.
+- Flip back to `backend: memory` anytime for offline work.
 
 ---
 
@@ -91,10 +166,18 @@ heinzy/
     retrieve.py          #   question -> top-k chunks, k from config
     embedder.py          #   local BGE, hash fallback
     store.py             #   VectorStore protocol + in-memory adapter (S4 seam)
+    stores/chroma_store.py  #   shared Chroma HTTP adapter (S4)
 scripts/smoke_retrieval.py   # end-to-end demo on placeholder chunks
+scripts/smoke_store.py       # S4 store factory smoke (memory or chroma)
 tests/test_retrieval.py      # locks the retrieval contract
+tests/test_eventlog.py       # locks A5 JSONL audit append contract
+tests/test_store.py          # locks S4 get_store / adapter contract
+heinzy/eventlog/             # append-only retrieval event log (A5)
+docker-compose.ollama.yml    # shared Gemma/Ollama host for the team (S3)
+docker-compose.chroma.yml    # shared Chroma host for the team (S4)
 data/corpus/             # MISM PDFs go here (gitignored, shared out of band — S6)
 data/index/              # built indexes (gitignored)
+data/logs/               # retrieval JSONL audit log (gitignored)
 ```
 
 ---
@@ -105,21 +188,25 @@ data/index/              # built indexes (gitignored)
 |------|--------|-------|
 | Config system (S5) | ✅ done | `config.yaml` + loader + hash |
 | Retrieval (A2) | ✅ done | config-driven `k`, provenance on every hit, tests green |
-| Vector-store seam (S4) | ✅ interface done | in-memory now; **DB owner** implements the `VectorStore` protocol and adds a branch in `get_store()` — retrieval code untouched |
+| Vector-store seam (S4) | ✅ memory + chroma | `InMemoryStore` default; shared Chroma via `docker-compose.chroma.yml` + `ChromaStore` HttpClient |
 | Docker (S2) | ✅ done | pinned base + deps |
+| Shared Gemma host (S3) | 🟡 compose ready | `docker-compose.ollama.yml` — one host for the team; A3 still must call it |
 | Ingestion bodies (A1) | ⬜ skeleton only | functions `raise NotImplementedError`; contracts written in docstrings |
-| Generation/answering (A3) | ⬜ not started | Gemma 12B, served separately (S3) |
+| Generation/answering (A3) | ⬜ not started | calls shared `MODEL_ENDPOINT` (Gemma via Ollama) |
 | Citations (A4) | ⬜ not started | provenance already flows from retrieval |
-| Event log (A5) | 🟡 shape defined | `RetrievalResult.to_log_record()` emits the A5 record shape |
+| Event log (A5) | 🟡 retrieval logging | JSONL + envelope (`event_id`/`ts`/`event_type`/`actor`); generation events later |
 | Eval harness (A6) | ⬜ not started | owner: Lisa |
 | Governance layer | ⬜ not started | policy engine, HITL, red-team set |
 
-### Swapping in the real database
+### Swapping vector-store backends
 
-The DB owner does **not** touch retrieval code. They:
-1. Write a class implementing the `VectorStore` protocol in `heinzy/retrieval/store.py`.
-2. Register it in `get_store()` (one `if` branch).
-3. Set `vector_store.backend` in `config.yaml`.
+Retrieval talks only to the `VectorStore` protocol. To use the shared Chroma host:
+1. Host runs `docker-compose.chroma.yml`.
+2. Clients `pip install -e ".[store]"` and set `CHROMA_HOST` in `.env`.
+3. Set `vector_store.backend: chroma` in `config.yaml` (no retrieval code changes).
+
+To add another DB later: implement the protocol, register one branch in
+`get_store()`, point `backend` at it.
 
 ### Note on infrastructure
 
@@ -142,5 +229,10 @@ out of the repo (see `.gitignore`), per infra task S6.
 
 ## Environment
 
-Copy `.env.template` to `.env` and fill values. A clean clone runs after filling
-the template (Infra task S7). `.env` is gitignored.
+Copy `.env.template` to `.env` and fill values. For retrieval smoke/tests you can
+leave a placeholder `MODEL_ENDPOINT` — retrieval does not call it. For generation
+(A3), set it to the **shared** Gemma host URL the team agreed on (Infra S7).
+`.env` is gitignored.
+
+Also update the local `.env` if you already had `localhost` from an older
+template.

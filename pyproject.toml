@@ -1,0 +1,36 @@
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "heinzy"
+version = "0.1.0"
+description = "Heinzy — governed advising assistant (retrieval + governance layer)"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0.1",
+]
+
+[project.optional-dependencies]
+# Real embedding model. Optional so the pipeline runs (on the hash fallback)
+# without a multi-GB download during setup.
+embed = [
+    "sentence-transformers>=3.0.0",
+]
+# Shared Chroma HTTP thin client (S4). Avoids native hnswlib builds on Windows.
+# Server runs via docker-compose.chroma.yml — do not also install full `chromadb`.
+# Pin major with the Docker image tag in docker-compose.chroma.yml.
+store = [
+    "chromadb-client>=1.5.0,<2",
+]
+dev = [
+    "pytest>=8.0.0",
+]
+
+[tool.setuptools.packages.find]
+include = ["heinzy*"]
+
+[tool.pytest.ini_options]
+markers = [
+    "integration: needs live shared infra (Chroma/Ollama)",
+]

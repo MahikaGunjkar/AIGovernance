@@ -24,22 +24,35 @@ retrieval:
   score_floor: 0.0        # drop chunks below this similarity (0 = keep all)
 
 # ---- Vector store (S4) -----------------------------------------------------
-# Accessed only through the LlamaIndex abstraction so the store swaps cheaply.
-# "memory" runs tonight with zero infra. A teammate owns wiring the real DB;
-# they change `backend` here and implement one adapter — retrieval code is
-# untouched.
+# Accessed only through the VectorStore protocol in heinzy/retrieval/store.py
+# so the store swaps without touching retrieval. Default "memory" keeps clone
+# + tests offline. Team shared DB: run docker-compose.chroma.yml on the host,
+# set backend to "chroma", and point CHROMA_HOST at that machine (Mac/Windows).
 vector_store:
-  backend: "memory"       # memory | chroma | <db-owner-adds-more>
-  persist_dir: "data/index"
+  backend: "memory"       # memory | chroma
+  persist_dir: "data/index"   # reserved for local adapters; unused by HTTP chroma
+  host: "${CHROMA_HOST}"      # 127.0.0.1 on host operator; LAN IP for teammates
+  port: 8000
+  collection: "heinzy"
 
 # ---- Generation model (S3) -------------------------------------------------
-# Recorded for reproducibility + stamped into eval output. Serving endpoint is
-# a separate infra task; retrieval does not call this.
+# Recorded for reproducibility + stamped into eval output. The model is served
+# on ONE shared Ollama host (see docker-compose.ollama.yml); teammates only set
+# MODEL_ENDPOINT. Retrieval does not call this. Prefer gemma2:9b on 8GB VRAM;
+# use gemma2:12b only if the shared host can hold it.
 model:
-  tag: "gemma-2-12b"
-  quantization: "Q4_K_M"
+  tag: "gemma2:9b"            # must match `ollama pull` on the shared host
+  quantization: "Q4_K_M"      # Ollama default quant for these tags
   endpoint: "${MODEL_ENDPOINT}"   # filled from env, never committed
 
 # ---- Prompt versioning -----------------------------------------------------
 prompt:
   version: "p0"
+
+# ---- Event log / audit (A5) ------------------------------------------------
+# Append-only JSONL of retrieval events. Path is local artifact (gitignored).
+# Each record stamps an actor {actor_id, role} — required when logging is on.
+# Generation/governance events can share this file later with other event_types.
+event_log:
+  enabled: true
+  path: "data/logs/retrieval.jsonl"
