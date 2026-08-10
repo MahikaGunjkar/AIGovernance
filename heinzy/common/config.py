@@ -2,8 +2,8 @@
 Config loader (Infra task S5).
 
 Loads config.yaml, expands ${ENV_VAR} references from the environment, and
-computes a stable config_hash. The hash goes into every eval result and every
-event-log record so a run can be reproduced exactly.
+computes a stable config_hash. The hash goes into every eval result so a run
+can be reproduced exactly.
 
 Usage:
     from heinzy.common.config import load_config
