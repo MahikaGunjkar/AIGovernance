@@ -106,6 +106,10 @@ class ChromaStore:
     def count(self) -> int:
         return int(self._collection.count())
 
+    def has_doc(self, doc_id: str) -> bool:
+        existing = self._collection.get(where={"doc_id": doc_id}, limit=1)
+        return len(existing.get("ids") or []) > 0
+
 
 def _meta_from_chunk(chunk: StoredChunk) -> dict[str, Any]:
     return {
