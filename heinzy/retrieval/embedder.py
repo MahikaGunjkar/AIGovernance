@@ -1,12 +1,16 @@
 """
 Query/text embedder for retrieval.
 
-Primary path: a local sentence-transformers model (config: embed.model_tag),
-so nothing leaves local infra (PRD Data/Compute constraint). If the model or
-its dependency isn't installed, we fall back to a deterministic hash embedder
-of the SAME dimension so the pipeline still runs and tests stay green. The
-fallback is NOT semantically meaningful — it exists only to keep the seams
-wired while GPUs/models are being provisioned.
+Primary path: fastembed, loading the SAME model_tag used to embed the stored
+chunks in ingest M4 (heinzy/ingest/embed.py) — so query vectors and stored
+vectors come from the exact same library and land in the same space, which
+cosine similarity in the store depends on. (Switched from sentence-transformers:
+that library would load the same model *name* but isn't guaranteed to produce
+identical vectors, which would silently degrade retrieval quality rather than
+fail loudly.) If fastembed or its model isn't available, we fall back to a
+deterministic hash embedder of the SAME dimension so the pipeline still runs
+and tests stay green. The fallback is NOT semantically meaningful — it exists
+only to keep the seams wired while GPUs/models are being provisioned.
 
 Which path ran is exposed via `.is_semantic` and stamped by callers into logs,
 so nobody mistakes fallback scores for real ones.
@@ -23,9 +27,9 @@ class Embedder:
         self._model = None
         self.is_semantic = False
         try:
-            from sentence_transformers import SentenceTransformer  # type: ignore
+            from fastembed import TextEmbedding
 
-            self._model = SentenceTransformer(model_tag)
+            self._model = TextEmbedding(model_name=model_tag)
             self.is_semantic = True
         except Exception:
             # No model available -> deterministic fallback. Keeps dim invariant.
@@ -34,11 +38,13 @@ class Embedder:
 
     def embed(self, text: str) -> list[float]:
         if self._model is not None:
-            vec = self._model.encode(text, normalize_embeddings=True)
-            return [float(x) for x in vec]
+            vec = next(self._model.embed([text]))
+            return vec.tolist()
         return self._hash_embed(text)
 
     def embed_many(self, texts: list[str]) -> list[list[float]]:
+        if self._model is not None:
+            return [v.tolist() for v in self._model.embed(texts)]
         return [self.embed(t) for t in texts]
 
     def _hash_embed(self, text: str) -> list[float]:

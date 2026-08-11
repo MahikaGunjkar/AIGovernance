@@ -1,6 +1,4 @@
 """
-Retrieval (Prototype task A2).
-
 pre:  the store has been populated (ingest pipeline, or a test fixture)
 post: query() returns <= k ScoredChunks, sorted by score descending, each
       carrying provenance (doc_id, section_path, source_pages) for citations
