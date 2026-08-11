@@ -13,11 +13,8 @@ Run from repo root:
 from __future__ import annotations
 
 import argparse
-import json
-import os
 
 from heinzy.common.config import load_config
-from heinzy.eventlog import Actor, get_event_log
 from heinzy.retrieval.embedder import Embedder
 from heinzy.retrieval.retrieve import Retriever
 from heinzy.retrieval.store import InMemoryStore, StoredChunk
@@ -55,40 +52,21 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--query", default="How many elective courses can I take?")
     ap.add_argument("--k", type=int, default=None, help="override config k")
-    ap.add_argument(
-        "--actor-id",
-        default=os.environ.get("HEINZY_ACTOR_ID", "smoke-operator"),
-        help="A5 actor_id stamped into the audit record",
-    )
-    ap.add_argument(
-        "--actor-role",
-        default=os.environ.get("HEINZY_ACTOR_ROLE", "advisor"),
-        help="A5 actor role (advisor|student|system|...)",
-    )
     args = ap.parse_args()
 
     cfg = load_config()
     store = build_seeded_store(cfg)
-    event_log = get_event_log(cfg)
-    actor = Actor(actor_id=args.actor_id, role=args.actor_role)
-    retriever = Retriever(
-        cfg, store=store, event_log=event_log, default_actor=actor
-    )
+    retriever = Retriever(cfg, store=store)
     result = retriever.retrieve(args.query, k=args.k)
 
     print(f"config_hash : {cfg.config_hash}")
     print(f"embedder    : {result.embed_model} "
           f"({'semantic' if result.is_semantic else 'HASH-FALLBACK, not semantic'})")
-    print(f"actor       : {actor.actor_id} ({actor.role})")
     print(f"k (effective): {result.k}   store size: {store.count()}")
     print(f"query       : {result.query}\n")
     for rank, h in enumerate(result.hits, 1):
         print(f"  {rank}. score={h.score:.4f}  [{h.section_path}] p{h.source_pages}")
         print(f"     {h.text}")
-    print("\n--- audit record (task A5) ---")
-    print(json.dumps(result.audit_record or result.to_log_record(), indent=2))
-    if event_log is not None:
-        print(f"\nappended to: {event_log.path.resolve()}")
 
 
 if __name__ == "__main__":

@@ -70,10 +70,3 @@ def test_empty_query_rejected(cfg, seeded_store):
     r = Retriever(cfg, store=seeded_store)
     with pytest.raises(ValueError):
         r.retrieve("   ")
-
-
-def test_log_record_shape(cfg, seeded_store):
-    r = Retriever(cfg, store=seeded_store)
-    rec = r.retrieve("units", k=2).to_log_record()
-    assert set(rec) >= {"query", "k", "embed_model", "config_hash", "hits"}
-    assert rec["config_hash"] == cfg.config_hash

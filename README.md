@@ -21,7 +21,6 @@ pip install -e .
 
 # Prove the retrieval pipeline works end to end (uses placeholder chunks):
 python scripts/smoke_retrieval.py
-# Also appends an A5 audit line to data/logs/retrieval.jsonl when event_log.enabled.
 
 # Change k without editing any source — it's read from config:
 python scripts/smoke_retrieval.py --k 2 --query "internship waiver"
@@ -170,14 +169,11 @@ heinzy/
 scripts/smoke_retrieval.py   # end-to-end demo on placeholder chunks
 scripts/smoke_store.py       # S4 store factory smoke (memory or chroma)
 tests/test_retrieval.py      # locks the retrieval contract
-tests/test_eventlog.py       # locks A5 JSONL audit append contract
 tests/test_store.py          # locks S4 get_store / adapter contract
-heinzy/eventlog/             # append-only retrieval event log (A5)
 docker-compose.ollama.yml    # shared Gemma/Ollama host for the team (S3)
 docker-compose.chroma.yml    # shared Chroma host for the team (S4)
 data/corpus/             # MISM PDFs go here (gitignored, shared out of band — S6)
 data/index/              # built indexes (gitignored)
-data/logs/               # retrieval JSONL audit log (gitignored)
 ```
 
 ---
@@ -194,7 +190,7 @@ data/logs/               # retrieval JSONL audit log (gitignored)
 | Ingestion bodies (A1) | ⬜ skeleton only | functions `raise NotImplementedError`; contracts written in docstrings |
 | Generation/answering (A3) | ⬜ not started | calls shared `MODEL_ENDPOINT` (Gemma via Ollama) |
 | Citations (A4) | ⬜ not started | provenance already flows from retrieval |
-| Event log (A5) | 🟡 retrieval logging | JSONL + envelope (`event_id`/`ts`/`event_type`/`actor`); generation events later |
+| Event log (A5) | ⬜ not started | append-only audit log (out of scope on this branch) |
 | Eval harness (A6) | ⬜ not started | owner: Lisa |
 | Governance layer | ⬜ not started | policy engine, HITL, red-team set |
 

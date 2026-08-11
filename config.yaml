@@ -1,7 +1,7 @@
 # Heinzy — single versioned config (Infra task S5)
 # Rule: NO tunable constants in source. Everything that changes retrieval or
 # model behavior lives here. The sha256 of this file is written into every
-# eval result and every event-log record so any run is reproducible.
+# eval result so any run is reproducible.
 
 version: "0.1.0"
 
@@ -48,11 +48,3 @@ model:
 # ---- Prompt versioning -----------------------------------------------------
 prompt:
   version: "p0"
-
-# ---- Event log / audit (A5) ------------------------------------------------
-# Append-only JSONL of retrieval events. Path is local artifact (gitignored).
-# Each record stamps an actor {actor_id, role} — required when logging is on.
-# Generation/governance events can share this file later with other event_types.
-event_log:
-  enabled: true
-  path: "data/logs/retrieval.jsonl"
