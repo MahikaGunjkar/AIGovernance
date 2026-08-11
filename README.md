@@ -5,10 +5,17 @@ policy questions from official MISM handbook documents, returns verifiable
 citations, and runs inside a governance layer that constrains what it can access
 and do.
 
-This repo currently covers the **ingestion pipeline skeleton** and a **working,
-config-driven retrieval layer**. The generation model, the real vector DB, and
-the governance layer are tracked as separate owners' tasks (see
-[Ownership](#ownership--whats-done)).
+## Status
+
+- ✅ Ingestion — PDF → chunks → embeddings
+- ✅ Retrieval — Chroma-backed
+- ✅ Generation — Gemma via Ollama
+- ✅ Docker image — builds and runs standalone; real answers need Gemma + Chroma reachable (see below)
+- 🟡 Event log — retrieval only, generation not logged yet
+- ⬜ Eval harness
+- ⬜ Governance layer
+
+Details: [Ownership & what's done](#ownership--whats-done).
 
 ---
 
@@ -33,17 +40,12 @@ pytest -q
 That's the S1 "done when": a stranger clones and reaches a running system from
 this README alone.
 
-### Real embeddings (optional)
+### Embeddings
 
-By default the embedder falls back to a **deterministic hash embedding** so the
-pipeline runs with zero downloads — scores are *not* semantically meaningful and
-the output clearly says `HASH-FALLBACK`. For real retrieval quality:
-
-```bash
-pip install -e ".[embed]"   # installs sentence-transformers, downloads BGE
-```
-
-The output then reports `semantic` and rankings become meaningful.
+Both ingest and retrieval embed with `fastembed` (`BAAI/bge-small-en-v1.5`) —
+core dependency now, ~130MB, CPU-only, no API key. Same library both sides, so
+vectors are always comparable. Falls back to a hash embedding
+(`HASH-FALLBACK` in output) only if `fastembed` fails to import.
 
 ### Docker — Heinzy app image (S2)
 
@@ -52,8 +54,9 @@ docker build -t heinzy .
 docker run --rm heinzy          # runs the retrieval smoke test
 ```
 
-This image runs the Python retrieval/ingest code only. It does **not** bundle
-Gemma weights.
+Build installs the `store` extra and pre-warms the `fastembed` cache, so the
+image is fully self-contained. No Gemma weights, no Ollama — generation calls
+the shared host.
 
 ### Shared Gemma host (S3) — one machine for the whole team
 
@@ -91,16 +94,16 @@ curl http://<host>:11434/api/tags
 - Open firewall TCP `11434` to teammates only.
 - If the host has no GPU, remove the `gpus: all` line in the compose file;
   inference still works on CPU, just slowly.
-- Align `config.yaml` → `model.tag` with the Ollama model you pulled
-  (`gemma2:9b` / `gemma2:12b`) when A3 lands. Recorded tag is for reproducibility.
-- Generation/answering (A3) is not implemented yet; this only stands up the
-  shared endpoint the team will call.
+- Align `config.yaml` → `model.tag` with what you pulled, or set `MODEL_TAG`
+  to override it locally for testing without touching the shared config.
+- Generation (`heinzy/generation/generator.py`) calls `/api/chat` on this
+  endpoint — see [Ask a real question](#ask-a-real-question-end-to-end).
 
 ### Shared Chroma host (S4) — one machine for the whole team
 
 Same pattern as Gemma: **one shared Chroma Docker service**, Mac/Windows clients
-only set `CHROMA_HOST`. Default config stays `backend: memory` so clone + pytest
-work offline.
+only set `CHROMA_HOST`. Default backend is now `chroma`; flip to `memory` in
+`config.yaml` for offline work (tests use their own store either way).
 
 | Role | What they do |
 |------|----------------|
@@ -129,6 +132,19 @@ python scripts/smoke_store.py
 - Retrieval code never imports Chroma — only `heinzy/retrieval/stores/chroma_store.py`.
 - Flip back to `backend: memory` anytime for offline work.
 
+### Ask a real question end to end
+
+With Gemma (`MODEL_ENDPOINT`) and Chroma (`CHROMA_HOST`) reachable:
+
+```bash
+# PDF goes in data/corpus/ first (gitignored, shared out of band)
+python scripts/ask_handbook.py --query "how many electives can I take?"
+python scripts/chat.py   # interactive
+```
+
+First run ingests; later runs against the same doc skip straight to
+retrieval + generation (`store.has_doc()` check).
+
 ---
 
 ## Configuration — one file, no constants in source
@@ -152,22 +168,29 @@ python heinzy/common/config.py   # prints version, config_hash, key values
 config.yaml              # single source of truth for all knobs (S5)
 heinzy/
   common/config.py       # config loader + config_hash (S5)
-  ingest/                # ingestion pipeline skeleton, M0–M6 (task A1, owner: Guy)
-    registry.py          #   M0 hash PDFs -> deterministic doc_id
+  ingest/                # ingestion pipeline, M0–M6 (task A1) — done
+    registry.py          #   M0 hash PDFs -> doc_id
     extract.py           #   M1 PDF -> per-page text
     structure.py         #   M2 pages -> section-aware blocks
     chunk.py             #   M3 blocks -> chunks
     embed.py             #   M4 chunks -> vectors
     index.py             #   M5 vectors -> collection
-    verify.py            #   M6 read-only sanity checks
+    verify.py            #   M6 sanity checks
     types.py             #   shared record types + pre/post contracts
-  retrieval/             # retrieval layer (task A2) — THIS IS BUILT
+  retrieval/             # retrieval layer (task A2) — done
     retrieve.py          #   question -> top-k chunks, k from config
-    embedder.py          #   local BGE, hash fallback
-    store.py             #   VectorStore protocol + in-memory adapter (S4 seam)
-    stores/chroma_store.py  #   shared Chroma HTTP adapter (S4)
-scripts/smoke_retrieval.py   # end-to-end demo on placeholder chunks
-scripts/smoke_store.py       # S4 store factory smoke (memory or chroma)
+    embedder.py          #   fastembed (same as ingest's, for compatible vectors)
+    store.py             #   VectorStore protocol + in-memory/chroma adapters
+    stores/chroma_store.py  #   Chroma HTTP adapter
+  generation/             # generation layer (task A3) — done
+    generator.py          #   chunks -> grounded, cited answer via Ollama
+  pipeline.py             # shared ingest-and-populate-store orchestration
+  eventlog/               # append-only retrieval event log (A5)
+scripts/
+  ask_handbook.py         # ingest + retrieve + generate, one question via --query
+  chat.py                 # same, interactive
+  smoke_retrieval.py      # placeholder-chunk demo, no real data needed
+  smoke_store.py          # store factory smoke (memory or chroma)
 tests/test_retrieval.py      # locks the retrieval contract
 tests/test_store.py          # locks S4 get_store / adapter contract
 docker-compose.ollama.yml    # shared Gemma/Ollama host for the team (S3)
@@ -183,16 +206,17 @@ data/index/              # built indexes (gitignored)
 | Area | Status | Notes |
 |------|--------|-------|
 | Config system (S5) | ✅ done | `config.yaml` + loader + hash |
+| Ingestion (A1) | ✅ done | M0–M6 implemented, `verify()` clean on the real handbook |
 | Retrieval (A2) | ✅ done | config-driven `k`, provenance on every hit, tests green |
 | Vector-store seam (S4) | ✅ memory + chroma | `InMemoryStore` default; shared Chroma via `docker-compose.chroma.yml` + `ChromaStore` HttpClient |
-| Docker (S2) | ✅ done | pinned base + deps |
+| Docker (S2) | ✅ done | pinned base + deps !
 | Shared Gemma host (S3) | 🟡 compose ready | `docker-compose.ollama.yml` — one host for the team; A3 still must call it |
 | Ingestion bodies (A1) | ⬜ skeleton only | functions `raise NotImplementedError`; contracts written in docstrings |
 | Generation/answering (A3) | ⬜ not started | calls shared `MODEL_ENDPOINT` (Gemma via Ollama) |
 | Citations (A4) | ⬜ not started | provenance already flows from retrieval |
 | Event log (A5) | ⬜ not started | append-only audit log (out of scope on this branch) |
 | Eval harness (A6) | ⬜ not started | owner: Lisa |
-| Governance layer | ⬜ not started | policy engine, HITL, red-team set |
+| Governance layer | ⬜ not started | scaffolding on `feature/governance-policies`, not wired in — `agent_governance` dep doesn't exist |
 
 ### Swapping vector-store backends
 
