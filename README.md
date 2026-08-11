@@ -28,7 +28,6 @@ pip install -e .
 
 # Prove the retrieval pipeline works end to end (uses placeholder chunks):
 python scripts/smoke_retrieval.py
-# Also appends an A5 audit line to data/logs/retrieval.jsonl when event_log.enabled.
 
 # Change k without editing any source — it's read from config:
 python scripts/smoke_retrieval.py --k 2 --query "internship waiver"
@@ -193,13 +192,11 @@ scripts/
   smoke_retrieval.py      # placeholder-chunk demo, no real data needed
   smoke_store.py          # store factory smoke (memory or chroma)
 tests/test_retrieval.py      # locks the retrieval contract
-tests/test_eventlog.py       # locks A5 JSONL audit append contract
 tests/test_store.py          # locks S4 get_store / adapter contract
 docker-compose.ollama.yml    # shared Gemma/Ollama host for the team (S3)
 docker-compose.chroma.yml    # shared Chroma host for the team (S4)
 data/corpus/             # MISM PDFs go here (gitignored, shared out of band — S6)
 data/index/              # built indexes (gitignored)
-data/logs/               # retrieval JSONL audit log (gitignored)
 ```
 
 ---
@@ -211,12 +208,13 @@ data/logs/               # retrieval JSONL audit log (gitignored)
 | Config system (S5) | ✅ done | `config.yaml` + loader + hash |
 | Ingestion (A1) | ✅ done | M0–M6 implemented, `verify()` clean on the real handbook |
 | Retrieval (A2) | ✅ done | config-driven `k`, provenance on every hit, tests green |
-| Vector-store seam (S4) | ✅ memory + chroma | default `backend: chroma`, flip to `memory` for offline |
-| Docker (S2) | ✅ done | pinned deps, `fastembed` pre-warmed at build |
-| Shared Gemma host (S3) | 🟡 compose ready | `docker-compose.ollama.yml` — one host for the team |
-| Generation/answering (A3) | ✅ done | `heinzy/generation/generator.py` — see `ask_handbook.py` / `chat.py` |
-| Citations (A4) | ✅ done | `section_path` + `source_pages` on every hit |
-| Event log (A5) | 🟡 retrieval only | generation events not logged yet |
+| Vector-store seam (S4) | ✅ memory + chroma | `InMemoryStore` default; shared Chroma via `docker-compose.chroma.yml` + `ChromaStore` HttpClient |
+| Docker (S2) | ✅ done | pinned base + deps !
+| Shared Gemma host (S3) | 🟡 compose ready | `docker-compose.ollama.yml` — one host for the team; A3 still must call it |
+| Ingestion bodies (A1) | ⬜ skeleton only | functions `raise NotImplementedError`; contracts written in docstrings |
+| Generation/answering (A3) | ⬜ not started | calls shared `MODEL_ENDPOINT` (Gemma via Ollama) |
+| Citations (A4) | ⬜ not started | provenance already flows from retrieval |
+| Event log (A5) | ⬜ not started | append-only audit log (out of scope on this branch) |
 | Eval harness (A6) | ⬜ not started | owner: Lisa |
 | Governance layer | ⬜ not started | scaffolding on `feature/governance-policies`, not wired in — `agent_governance` dep doesn't exist |
 

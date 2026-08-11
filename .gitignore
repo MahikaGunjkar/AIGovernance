@@ -6,10 +6,8 @@ TEAM_INFRA_NOTES.md
 # not committed
 data/corpus/*
 data/index/*
-data/logs/*
 !data/corpus/.gitkeep
 !data/index/.gitkeep
-!data/logs/.gitkeep
 # python
 __pycache__/
 *.pyc
