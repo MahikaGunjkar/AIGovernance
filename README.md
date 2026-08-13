@@ -10,6 +10,9 @@ and do.
 - ✅ Ingestion — PDF → chunks → embeddings
 - ✅ Retrieval — Chroma-backed
 - ✅ Generation — Gemma via Ollama
+- ✅ Grounded answering + abstention (A3b) — answers only from retrieved chunks,
+  refuses 10/10 out-of-corpus questions on the real handbook
+  ([how it works](#grounded-answering--abstention-a3b))
 - ✅ Docker image — builds and runs standalone; real answers need Gemma + Chroma reachable (see below)
 - 🟡 Event log — retrieval only, generation not logged yet
 - ⬜ Eval harness
@@ -147,6 +150,151 @@ retrieval + generation (`store.has_doc()` check).
 
 ---
 
+## Grounded answering & abstention (A3b)
+
+The assistant answers **only** from retrieved handbook chunks, and when the
+handbook doesn't contain the answer it says so instead of producing plausible
+text. An advisor repeating an invented policy to a student is the failure this
+is built to prevent, so "no answer" is treated as strictly better than a
+confident guess.
+
+### Two layers, because either alone leaks
+
+| Layer | Fires when | Mechanism | `refusal_reason` |
+|-------|-----------|-----------|------------------|
+| 1, no context | fewer than `min_hits` chunks clear `retrieval.score_floor` | **the model is never called**, so it cannot be talked out of it | `no_retrieved_context` |
+| 2, insufficient context | chunks cleared the floor but don't answer the question | model emits `generation.abstain.sentinel`, which we detect and convert to a refusal | `model_insufficient_context` |
+
+Layer 2 is not optional. Nearest neighbour search always returns *k* chunks and
+has no way to report "no match", so every question retrieves something that
+scores respectably. Measured on the real handbook with
+`scripts/calibrate_floor.py`.
+
+```
+lowest in-corpus top score  : 0.7698   (ic-06, capstone project)
+highest out-of-corpus score : 0.7449   (ooc-07, an invented transfer policy)
+Separable. Suggested retrieval.score_floor: 0.757  (margin 0.0249)
+```
+
+Separable, but by 0.0249 across 16 questions. A floor set at that razor edge
+would refuse the first legitimate question that happens to score 0.74, and over
+refusal is the failure mode that makes the assistant useless rather than merely
+unhelpful. So `score_floor` stays conservative. At 0.65 the gate drops 3 of 10
+out-of-corpus questions for free while keeping all 6 controls with 0.12 of
+headroom, and layer 2 catches the rest.
+
+The suggested floor is not a number to paste into config. Re-run the calibration
+after any change to chunking, `k`, or the embedding model, and treat a thin
+margin as evidence that the floor should stay loose.
+
+Refusals return the configured `refusal_text`, never model prose, so the eval
+harness, event log, and UI branch on `Answer.refused` instead of pattern
+matching English.
+
+### Citations are checked, not trusted
+
+Every section an answer cites is matched against the sections retrieval actually
+returned, and mismatches land in `Answer.unsupported_citations` and fail the
+eval. This is a *necessary* condition for grounding rather than a sufficient
+one. It proves nothing outside the retrieved set was cited, not that every
+sentence is supported. Claim level faithfulness scoring belongs to the eval
+harness (A6).
+
+### Running the eval
+
+```bash
+# No handbook PDF needed. Labelled stand-in corpus, in-memory, no Chroma.
+python scripts/eval_abstention.py --fixture
+
+# Against the real handbook in data/corpus/
+python scripts/eval_abstention.py
+
+# Same, when the shared Chroma host is unreachable
+python scripts/eval_abstention.py --backend memory
+
+# Whatever model is actually pulled locally
+MODEL_TAG=llama3.2:latest python scripts/eval_abstention.py --fixture
+
+# Is a score floor viable on this corpus? Retrieval only, no model calls.
+python scripts/calibrate_floor.py
+```
+
+Exits non-zero if any out-of-corpus question got answered, any in-corpus control
+got refused, or any answer cited a section retrieval never returned, so it can
+gate a PR. Per-question results are written to `data/logs/`, which is gitignored.
+
+**The in-corpus controls are part of the pass criteria on purpose.** A system
+that refuses everything scores a perfect 10/10 on the out-of-corpus set and is
+useless, and measuring only one direction hides that.
+
+### Results
+
+`eval/abstention_questions.yaml` holds 10 out-of-corpus questions. Each targets
+a different way a RAG system invents an answer, covering world knowledge, an
+adjacent program, the wrong institution,
+personal advice, absent specifics, a fact that lives in another document, a
+question presupposing a policy that doesn't exist, an out-of-scope task, and two
+topics that sound like guaranteed handbook sections but are absent from this
+one. Six in-corpus controls sit alongside them.
+
+Every out-of-corpus question's absence was **verified against the handbook**
+rather than assumed, and every control was verified present. Both directions
+matter, because an unanswerable control fails for the wrong reason and makes a
+correct refusal look like a bug.
+
+Real handbook (`mism-student-handbook.pdf`, 14 pages into 28 chunks),
+`config_hash=7502dd99ab55`, k=5, temperature 0.
+
+| Model | Out-of-corpus refused | Controls answered | Unsupported citations | Contentless answers |
+|-------|----------------------|-------------------|-----------------------|---------------------|
+| `gemma4:e2b` | **10/10** | 6/6 | 0 | 0 |
+| `llama3.2:latest` | **9/10** | 6/6 | 0 | 0 |
+| `gemma2:9b` (team target) | *not run, needs the shared host* | | | |
+
+The single `llama3.2` miss is `ooc-04`, where it deflects to Career Services
+rather than inventing a policy. Not a refusal, but not the fabrication the
+criterion targets either. `gemma4:e2b` refuses it outright.
+
+Two reported but non-failing signals guard against passing on a technicality.
+
+- **contentless answers**, where a bare citation with no prose is not an answer
+  but is not a refusal either, so it would otherwise score as a success.
+- **answers citing nothing**, where the answer may be perfectly grounded but
+  with no citation to check, the grounding check passed on an empty set. A clean
+  run is not the same as a verified one.
+
+### Reproducibility
+
+Runs are byte identical, with **16 of 16 answers matching across two consecutive
+runs** of the same model. That required pinning `generation.temperature` and
+`generation.seed`. Ollama defaults to temperature 0.8, which had the same
+question refusing on one run and answering on the next. A governed assistant
+that answers differently on a re-ask cannot be audited, and the `config_hash`
+stamped into every result was promising a reproducibility the system did not
+have.
+
+Because prompt driven abstention is model dependent, every report stamps
+`model_tag`, `embed_model`, `k`, `score_floor`, `temperature`, `seed` and
+`config_hash`. A pass is evidence for that combination rather than a permanent
+property, so re-run before trusting it on a different model.
+
+### Known issues this surfaced elsewhere
+
+Neither is an A3b bug, but both degrade grounded answering and belong to other
+areas.
+
+- **Ingestion (A1).** The page footer `MISM Handbook Addendum <n>` is extracted
+  into chunk text on nearly every page. It pollutes context and invites the
+  model to cite a footer as if it were a section.
+- **Retrieval (A2).** "What concentrations can a MISM student pursue?" is
+  answered by the handbook but not by top-5 retrieval. Section 7 says only that
+  concentrations need no extra electives, and the five names live in 7.1 through
+  7.5, none of which surface for that phrasing. A refusal there is correct given
+  the context, so it was dropped as a control rather than counted as over
+  refusal.
+
+---
+
 ## Configuration — one file, no constants in source
 
 All tunable behavior lives in [`config.yaml`](config.yaml): chunk size, overlap,
@@ -184,15 +332,23 @@ heinzy/
     stores/chroma_store.py  #   Chroma HTTP adapter
   generation/             # generation layer (task A3) — done
     generator.py          #   chunks -> grounded, cited answer via Ollama
+    grounding.py          #   citation extraction + retrieved-set check (A3b)
+  eval/
+    abstention.py         #   out-of-corpus refusal eval + fixture store (A3b)
   pipeline.py             # shared ingest-and-populate-store orchestration
-  eventlog/               # append-only retrieval event log (A5)
+eval/
+  abstention_questions.yaml  # 8 out-of-corpus + 5 in-corpus control questions
+  fixture_corpus.yaml        # labelled stand-in corpus (NOT the real handbook)
 scripts/
   ask_handbook.py         # ingest + retrieve + generate, one question via --query
   chat.py                 # same, interactive
+  eval_abstention.py      # proves the A3b claim; non-zero exit on failure
+  calibrate_floor.py      # is a score floor viable on this corpus?
   smoke_retrieval.py      # placeholder-chunk demo, no real data needed
   smoke_store.py          # store factory smoke (memory or chroma)
 tests/test_retrieval.py      # locks the retrieval contract
 tests/test_store.py          # locks S4 get_store / adapter contract
+tests/test_generation_grounding.py  # locks the refusal + citation contract (A3b)
 docker-compose.ollama.yml    # shared Gemma/Ollama host for the team (S3)
 docker-compose.chroma.yml    # shared Chroma host for the team (S4)
 data/corpus/             # MISM PDFs go here (gitignored, shared out of band — S6)
@@ -212,8 +368,9 @@ data/index/              # built indexes (gitignored)
 | Docker (S2) | ✅ done | pinned base + deps !
 | Shared Gemma host (S3) | 🟡 compose ready | `docker-compose.ollama.yml` — one host for the team; A3 still must call it |
 | Ingestion bodies (A1) | ⬜ skeleton only | functions `raise NotImplementedError`; contracts written in docstrings |
-| Generation/answering (A3) | ⬜ not started | calls shared `MODEL_ENDPOINT` (Gemma via Ollama) |
-| Citations (A4) | ⬜ not started | provenance already flows from retrieval |
+| Generation/answering (A3) | ✅ done | calls shared `MODEL_ENDPOINT` (Gemma via Ollama) |
+| Grounded answering + abstention (A3b) | ✅ done | two-layer refusal, citation check, eval harness. On the real handbook with `gemma4:e2b`, 10/10 out-of-corpus refused, 6/6 controls answered, 0 unsupported citations. Still to run on `gemma2:9b` |
+| Citations (A4) | 🟡 checked, not rendered | cited sections verified against the retrieved set; provenance flows from retrieval |
 | Event log (A5) | ⬜ not started | append-only audit log (out of scope on this branch) |
 | Eval harness (A6) | ⬜ not started | owner: Lisa |
 | Governance layer | ⬜ not started | scaffolding on `feature/governance-policies`, not wired in — `agent_governance` dep doesn't exist |
