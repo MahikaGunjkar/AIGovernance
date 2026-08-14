@@ -1,6 +1,7 @@
 import yaml
 import json
 from datetime import datetime
+from urllib.parse import urlparse
 
 class OllamaGovernanceInterceptor:
     def __init__(self, policy_path="policies/governance_policy.yaml"):
@@ -22,10 +23,12 @@ class OllamaGovernanceInterceptor:
 
         # 2. Check web search domain restrictions
         if action_type == "web_search" or tool_name == "web_search":
-            if not url.endswith(".cmu.edu"):
-                return self._format_decision("DENY", "enforce-domain-allowlist", "Phase 2: Web searches restricted to official university domains.")
+            domain = urlparse(url).netloc.lower()
+            # Allow cmu.edu or subdomains of cmu.edu (e.g., mism.cmu.edu)
+            if domain == "cmu.edu" or domain.endswith(".cmu.edu"):
+                return self._format_decision("REQUIRE_APPROVAL", "require-human-for-search", "Human approval required for official CMU domains.")
             else:
-                return self._format_decision("REQUIRE_APPROVAL", "require-human-for-search", "Human approval required for cmu.edu searches.")
+                return self._format_decision("DENY", "enforce-domain-allowlist", "Phase 2: Web searches restricted to official university domains.")
 
         return self._format_decision("ALLOW", "default-allow", "Action permitted.")
 
@@ -63,5 +66,4 @@ def execute_ollama_tool(tool_name: str, tool_args: dict, agent_id: str = "heinzy
         return {"status": "PAUSED_FOR_APPROVAL", "details": decision}
 
     print(f"[GOVERNANCE PASSED] Executing tool '{tool_name}'...")
-    # Proceed to execute tool function here
     return {"status": "SUCCESS", "details": decision}
