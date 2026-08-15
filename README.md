@@ -58,46 +58,45 @@ Build installs the `store` extra and pre-warms the `fastembed` cache, so the
 image is fully self-contained. No Gemma weights, no Ollama — generation calls
 the shared host.
 
-### Shared Gemma host (S3) — one machine for the whole team
+### Shared Gemma host (S3) — Google Colab (ephemeral)
 
-Pattern: **one shared Ollama host**, everyone else only sets `MODEL_ENDPOINT`.
+Pattern: **one shared Ollama host on Colab** running **`gemma2:12b`**, exposed
+with an **ngrok** tunnel. Everyone else only sets `MODEL_ENDPOINT`.
+
+Colab disconnects after idle / max session time and gets a **new tunnel URL on
+every restart**. If generation suddenly fails, the URL is almost certainly
+stale — ping the operator and update `.env`.
 
 | Role | What they do |
 |------|----------------|
-| **Host operator** (one person / one GPU box) | Runs [`docker-compose.ollama.yml`](docker-compose.ollama.yml), pulls the model, keeps port `11434` reachable on LAN/VPN |
-| **Everyone else** | Copy `.env.template` → `.env`, set `MODEL_ENDPOINT=http://<host-ip-or-name>:11434` |
+| **Host operator** (**@asriram15**) | Runs [`notebooks/colab_gemma_ollama_host.ipynb`](notebooks/colab_gemma_ollama_host.ipynb) on a Colab **GPU** runtime, posts the new `MODEL_ENDPOINT` to team chat whenever it changes |
+| **Everyone else** | Copy `.env.template` → `.env`, set `MODEL_ENDPOINT` to the **current** HTTPS ngrok URL from chat |
 
-**Host operator setup**
+Full checklist: [`docs/colab_gemma_host.md`](docs/colab_gemma_host.md).
 
-```bash
-# On the shared machine (Docker + NVIDIA GPU recommended):
-docker compose -f docker-compose.ollama.yml up -d
+**Host operator setup (summary)**
 
-# Pull once (cached in the named volume). Prefer 9b on 8GB VRAM; 12b if it fits:
-docker compose -f docker-compose.ollama.yml exec ollama ollama pull gemma2:9b
-# docker compose -f docker-compose.ollama.yml exec ollama ollama pull gemma2:12b
-```
+1. Colab → GPU runtime; Secret `NGROK_AUTHTOKEN`.
+2. Open / upload `notebooks/colab_gemma_ollama_host.ipynb` → Run all.
+3. Post the printed `MODEL_ENDPOINT=https://...` line to the team (and local
+   gitignored `TEAM_INFRA_NOTES.md`). Never commit live URLs.
 
-Tell teammates the reachable URL (e.g. `http://10.0.0.12:11434`). They put that
-in `.env` — nothing else to install for the model.
-
-**Teammate check** (from any machine that can reach the host):
+**Teammate check**
 
 ```bash
-curl http://<host>:11434/api/tags
+# Use the HTTPS URL from team chat (no :11434 suffix on ngrok)
+curl -sS "$MODEL_ENDPOINT/api/tags"   # should list gemma2:12b
 ```
 
 **Notes**
 
-- Keep the host on a private network / VPN. Ollama on `11434` has no app-level
-  auth in this setup — do not expose it to the public internet.
-- Open firewall TCP `11434` to teammates only.
-- If the host has no GPU, remove the `gpus: all` line in the compose file;
-  inference still works on CPU, just slowly.
-- Align `config.yaml` → `model.tag` with what you pulled, or set `MODEL_TAG`
-  to override it locally for testing without touching the shared config.
+- Align `config.yaml` → `model.tag: gemma2:12b` with the Colab pull, or set
+  `MODEL_TAG` to override for one shell.
 - Generation (`heinzy/generation/generator.py`) calls `/api/chat` on this
   endpoint — see [Ask a real question](#ask-a-real-question-end-to-end).
+- **Optional LAN fallback:** [`docker-compose.ollama.yml`](docker-compose.ollama.yml)
+  on a persistent GPU box still works (`MODEL_ENDPOINT=http://<host>:11434`).
+  Prefer Colab for the shared team host (issue #16).
 
 ### Shared Chroma host (S4) — one machine for the whole team
 
@@ -193,7 +192,9 @@ scripts/
   smoke_store.py          # store factory smoke (memory or chroma)
 tests/test_retrieval.py      # locks the retrieval contract
 tests/test_store.py          # locks S4 get_store / adapter contract
-docker-compose.ollama.yml    # shared Gemma/Ollama host for the team (S3)
+notebooks/colab_gemma_ollama_host.ipynb  # Colab Gemma 12B + ngrok host (S3 / #16)
+docs/colab_gemma_host.md # operator/teammate runbook for Colab host
+docker-compose.ollama.yml    # optional LAN Ollama fallback (S3)
 docker-compose.chroma.yml    # shared Chroma host for the team (S4)
 data/corpus/             # MISM PDFs go here (gitignored, shared out of band — S6)
 data/index/              # built indexes (gitignored)
@@ -210,7 +211,7 @@ data/index/              # built indexes (gitignored)
 | Retrieval (A2) | ✅ done | config-driven `k`, provenance on every hit, tests green |
 | Vector-store seam (S4) | ✅ memory + chroma | `InMemoryStore` default; shared Chroma via `docker-compose.chroma.yml` + `ChromaStore` HttpClient |
 | Docker (S2) | ✅ done | pinned base + deps !
-| Shared Gemma host (S3) | 🟡 compose ready | `docker-compose.ollama.yml` — one host for the team; A3 still must call it |
+| Shared Gemma host (S3) | 🟡 Colab + ngrok | `notebooks/colab_gemma_ollama_host.ipynb` (`gemma2:12b`); URL rotates — operator @asriram15 |
 | Ingestion bodies (A1) | ⬜ skeleton only | functions `raise NotImplementedError`; contracts written in docstrings |
 | Generation/answering (A3) | ⬜ not started | calls shared `MODEL_ENDPOINT` (Gemma via Ollama) |
 | Citations (A4) | ⬜ not started | provenance already flows from retrieval |
@@ -251,8 +252,9 @@ out of the repo (see `.gitignore`), per infra task S6.
 
 Copy `.env.template` to `.env` and fill values. For retrieval smoke/tests you can
 leave a placeholder `MODEL_ENDPOINT` — retrieval does not call it. For generation
-(A3), set it to the **shared** Gemma host URL the team agreed on (Infra S7).
+(A3), set it to the **current Colab ngrok URL** posted by the host operator
+(@asriram15). That URL rotates when Colab restarts (issue #16 / Infra S7).
 `.env` is gitignored.
 
-Also update the local `.env` if you already had `localhost` from an older
-template.
+Also update the local `.env` if you still have a LAN `localhost` / `:11434` value
+from an older template.

@@ -37,11 +37,11 @@ vector_store:
 
 # ---- Generation model (S3) -------------------------------------------------
 # Recorded for reproducibility + stamped into eval output. The model is served
-# on ONE shared Ollama host (see docker-compose.ollama.yml); teammates only set
-# MODEL_ENDPOINT. Retrieval does not call this. Prefer gemma2:9b on 8GB VRAM;
-# use gemma2:12b only if the shared host can hold it.
+# on the shared Colab Ollama host (notebooks/colab_gemma_ollama_host.ipynb);
+# teammates only set MODEL_ENDPOINT (ephemeral ngrok HTTPS URL). Retrieval does
+# not call this. Optional LAN fallback: docker-compose.ollama.yml.
 model:
-  tag: "gemma2:9b"            # must match `ollama pull` on the shared host
+  tag: "gemma2:12b"           # must match `ollama pull` on the Colab host
   quantization: "Q4_K_M"      # Ollama default quant for these tags
   endpoint: "${MODEL_ENDPOINT}"   # filled from env, never committed
 
