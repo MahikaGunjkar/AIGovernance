@@ -41,7 +41,7 @@ vector_store:
 # teammates only set MODEL_ENDPOINT (ephemeral ngrok HTTPS URL). Retrieval does
 # not call this. Optional LAN fallback: docker-compose.ollama.yml.
 model:
-  tag: "gemma2:12b"           # must match `ollama pull` on the Colab host
+  tag: "gemma3:12b"           # Ollama "Gemma 12B" = gemma3:12b (gemma2 has no 12b)
   quantization: "Q4_K_M"      # Ollama default quant for these tags
   endpoint: "${MODEL_ENDPOINT}"   # filled from env, never committed
 

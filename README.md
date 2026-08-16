@@ -60,7 +60,7 @@ the shared host.
 
 ### Shared Gemma host (S3) — Google Colab (ephemeral)
 
-Pattern: **one shared Ollama host on Colab** running **`gemma2:12b`**, exposed
+Pattern: **one shared Ollama host on Colab** running **`gemma3:12b`**, exposed
 with an **ngrok** tunnel. Everyone else only sets `MODEL_ENDPOINT`.
 
 Colab disconnects after idle / max session time and gets a **new tunnel URL on
@@ -85,12 +85,12 @@ Full checklist: [`docs/colab_gemma_host.md`](docs/colab_gemma_host.md).
 
 ```bash
 # Use the HTTPS URL from team chat (no :11434 suffix on ngrok)
-curl -sS "$MODEL_ENDPOINT/api/tags"   # should list gemma2:12b
+curl -sS "$MODEL_ENDPOINT/api/tags"   # should list gemma3:12b
 ```
 
 **Notes**
 
-- Align `config.yaml` → `model.tag: gemma2:12b` with the Colab pull, or set
+- Align `config.yaml` → `model.tag: gemma3:12b` with the Colab pull, or set
   `MODEL_TAG` to override for one shell.
 - Generation (`heinzy/generation/generator.py`) calls `/api/chat` on this
   endpoint — see [Ask a real question](#ask-a-real-question-end-to-end).
@@ -211,7 +211,7 @@ data/index/              # built indexes (gitignored)
 | Retrieval (A2) | ✅ done | config-driven `k`, provenance on every hit, tests green |
 | Vector-store seam (S4) | ✅ memory + chroma | `InMemoryStore` default; shared Chroma via `docker-compose.chroma.yml` + `ChromaStore` HttpClient |
 | Docker (S2) | ✅ done | pinned base + deps !
-| Shared Gemma host (S3) | 🟡 Colab + ngrok | `notebooks/colab_gemma_ollama_host.ipynb` (`gemma2:12b`); URL rotates — operator @asriram15 |
+| Shared Gemma host (S3) | 🟡 Colab + ngrok | `notebooks/colab_gemma_ollama_host.ipynb` (`gemma3:12b`); URL rotates — operator @asriram15 |
 | Ingestion bodies (A1) | ⬜ skeleton only | functions `raise NotImplementedError`; contracts written in docstrings |
 | Generation/answering (A3) | ⬜ not started | calls shared `MODEL_ENDPOINT` (Gemma via Ollama) |
 | Citations (A4) | ⬜ not started | provenance already flows from retrieval |

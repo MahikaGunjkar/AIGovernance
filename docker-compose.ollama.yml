@@ -1,7 +1,7 @@
 # Optional LAN Gemma/Ollama host (Infra task S3 fallback).
 #
 # Primary shared host is Google Colab + ngrok (issue #16):
-#   notebooks/colab_gemma_ollama_host.ipynb  →  gemma2:12b
+#   notebooks/colab_gemma_ollama_host.ipynb  →  gemma3:12b
 #   docs/colab_gemma_host.md
 #
 # Use this compose file only for a persistent local/LAN GPU box. Teammates then
@@ -9,7 +9,7 @@
 #
 # Operator (on the LAN host):
 #   docker compose -f docker-compose.ollama.yml up -d
-#   docker compose -f docker-compose.ollama.yml exec ollama ollama pull gemma2:12b
+#   docker compose -f docker-compose.ollama.yml exec ollama ollama pull gemma3:12b
 #
 # Smoke from another machine:
 #   curl http://<host>:11434/api/tags
