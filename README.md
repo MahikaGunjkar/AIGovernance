@@ -247,9 +247,13 @@ Real handbook (`mism-student-handbook.pdf`, 14 pages into 28 chunks),
 
 | Model | Out-of-corpus refused | Controls answered | Unsupported citations | Contentless answers |
 |-------|----------------------|-------------------|-----------------------|---------------------|
+| `gemma2:9b`, the configured model | **10/10** | 6/6 | 0 | 0 |
 | `gemma4:e2b` | **10/10** | 6/6 | 0 | 0 |
 | `llama3.2:latest` | **9/10** | 6/6 | 0 | 0 |
-| `gemma2:9b` (team target) | *not run, needs the shared host* | | | |
+
+`gemma2:9b` is what `config.yaml` declares, so that row is the one describing
+shipped behaviour. It ran with no `MODEL_TAG` override, and all six of its
+answers carried a citation that resolved against the retrieved set.
 
 The single `llama3.2` miss is `ooc-04`, where it deflects to Career Services
 rather than inventing a policy. Not a refusal, but not the fabrication the
@@ -262,6 +266,20 @@ Two reported but non-failing signals guard against passing on a technicality.
 - **answers citing nothing**, where the answer may be perfectly grounded but
   with no citation to check, the grounding check passed on an empty set. A clean
   run is not the same as a verified one.
+
+### Checking the generation host
+
+The shared host is planned for Colab, which issues a new tunnel URL on every
+restart. A stale `MODEL_ENDPOINT` fails quietly, and a host serving a different
+model than `config.yaml` names is worse, since results stamp the tag they were
+generated with.
+
+```bash
+python scripts/check_model_host.py
+```
+
+Exits non-zero when the host is unreachable, and separately when it is up but
+not serving the configured tag.
 
 ### Reproducibility
 
@@ -343,6 +361,7 @@ scripts/
   ask_handbook.py         # ingest + retrieve + generate, one question via --query
   chat.py                 # same, interactive
   eval_abstention.py      # proves the A3b claim; non-zero exit on failure
+  check_model_host.py     # is MODEL_ENDPOINT live and serving the configured tag?
   calibrate_floor.py      # is a score floor viable on this corpus?
   smoke_retrieval.py      # placeholder-chunk demo, no real data needed
   smoke_store.py          # store factory smoke (memory or chroma)
@@ -369,7 +388,7 @@ data/index/              # built indexes (gitignored)
 | Shared Gemma host (S3) | 🟡 compose ready | `docker-compose.ollama.yml` — one host for the team; A3 still must call it |
 | Ingestion bodies (A1) | ⬜ skeleton only | functions `raise NotImplementedError`; contracts written in docstrings |
 | Generation/answering (A3) | ✅ done | calls shared `MODEL_ENDPOINT` (Gemma via Ollama) |
-| Grounded answering + abstention (A3b) | ✅ done | two-layer refusal, citation check, eval harness. On the real handbook with `gemma4:e2b`, 10/10 out-of-corpus refused, 6/6 controls answered, 0 unsupported citations. Still to run on `gemma2:9b` |
+| Grounded answering + abstention (A3b) | ✅ done | two-layer refusal, citation check, eval harness. On the real handbook with the configured `gemma2:9b`, 10/10 out-of-corpus refused, 6/6 controls answered, 0 unsupported citations |
 | Citations (A4) | 🟡 checked, not rendered | cited sections verified against the retrieved set; provenance flows from retrieval |
 | Event log (A5) | ⬜ not started | append-only audit log (out of scope on this branch) |
 | Eval harness (A6) | ⬜ not started | owner: Lisa |
