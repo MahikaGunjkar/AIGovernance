@@ -1,0 +1,7 @@
+{"id": "q01", "question": "How many electives can a MISM student take?", "expected_answer": "MISM students may take up to 4 elective courses outside Heinz.", "expected_section_contains": "Electives", "in_corpus": true}
+{"id": "q02", "question": "How many units are required to graduate from the MISM program?", "expected_answer": "MISM students must complete 144 units to graduate.", "expected_section_contains": "Graduation", "in_corpus": true}
+{"id": "q03", "question": "What subjects are in the core curriculum?", "expected_answer": "The core curriculum includes statistics, economics, and databases.", "expected_section_contains": "Core", "in_corpus": true}
+{"id": "q04", "question": "Can the internship requirement be waived?", "expected_answer": "The internship requirement can be waived with prior relevant work experience.", "expected_section_contains": "Internship", "in_corpus": true}
+{"id": "q05", "question": "Who handles academic integrity violations?", "expected_answer": "Academic integrity violations are reported to the dean's office.", "expected_section_contains": "Conduct", "in_corpus": true}
+{"id": "q06", "question": "What is the weather forecast for Pittsburgh next week?", "expected_answer": "ABSTAIN: this is not covered by the MISM handbook.", "expected_section_contains": null, "in_corpus": false}
+{"id": "q07", "question": "What is the tuition cost for an unrelated art history degree?", "expected_answer": "ABSTAIN: this is not covered by the MISM handbook.", "expected_section_contains": null, "in_corpus": false}
