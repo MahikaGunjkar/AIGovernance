@@ -61,7 +61,11 @@ def _cosine(a: list[float], b: list[float]) -> float:
 
 
 def _looks_like_abstention(text: str) -> bool:
-    """Heuristic: did the model decline rather than fabricate?"""
+    """Keyword guess, no longer used for scoring.
+
+    Scoring reads Answer.refused. This stays for eyeballing disagreement between
+    the model's phrasing and the system's decision.
+    """
     t = text.lower()
     cues = [
         "cannot", "can't", "not covered", "no information", "not in the",
@@ -207,8 +211,11 @@ def main() -> None:
                 rec["answer_score"] = round(score, 4)
                 rec["answer_correct"] = bool(score >= args.sim_threshold)
             else:
-                # out-of-corpus: correct == abstained
-                abstained = _looks_like_abstention(got)
+                # out-of-corpus: correct == abstained. Read the structured flag
+                # the generator sets rather than scanning the text, so a
+                # confidently phrased fabrication cannot pass by avoiding cue
+                # words and a real answer containing "outside" is not mis-scored.
+                abstained = bool(getattr(answer, "refused", False))
                 rec["abstained"] = abstained
                 rec["answer_correct"] = abstained
 

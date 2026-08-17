@@ -198,12 +198,24 @@ highest out-of-corpus score : 0.7449   (ooc-07, an invented transfer policy)
 Separable. Suggested retrieval.score_floor: 0.757  (margin 0.0249)
 ```
 
-Separable, but by 0.0249 across 16 questions. A floor set at that razor edge
-would refuse the first legitimate question that happens to score 0.74, and over
-refusal is the failure mode that makes the assistant useless rather than merely
-unhelpful. So `score_floor` stays conservative. At 0.65 the gate drops 3 of 10
-out-of-corpus questions for free while keeping all 6 controls with 0.12 of
-headroom, and layer 2 catches the rest.
+Separable, but by 0.0249 across 16 questions. `score_floor` is set to **0.75**,
+inside that window, which makes Layer 1 a live gate rather than a formality. On
+the real handbook it now refuses all ten out-of-corpus questions before the
+model is called at all, and still answers all six controls.
+
+Be clear about what that buys and what it costs. The gain is that refusal no
+longer depends on the model complying with an instruction, and an out-of-corpus
+question never reaches generation. The cost is that the margin is thin. A
+legitimate question scoring 0.74 will be refused, and 16 questions is a small
+sample to place a threshold on. Widen the question set before trusting it
+further, and re-run the calibration after any change to chunking, `k`, or the
+embedding model.
+
+One consequence worth knowing. With the floor live, Layer 1 now catches every
+out-of-corpus question in the set, so Layer 2 never fires during the eval. It
+is still covered by unit tests, and it still matters for the case the floor
+cannot see, which is a question that retrieves genuinely high-scoring chunks
+that happen not to answer it.
 
 The suggested floor is not a number to paste into config. Re-run the calibration
 after any change to chunking, `k`, or the embedding model, and treat a thin

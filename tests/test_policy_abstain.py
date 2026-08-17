@@ -145,3 +145,82 @@ def test_sentinel_key_strips_formatting():
 def test_empty_sentinel_never_matches():
     """A blank sentinel must not turn every answer into a refusal."""
     assert not detects_refusal("any answer at all", "")
+
+
+# --- the QA the refusal ticket asks for ------------------------------------
+#
+# Both directions of the keyword-scanner failure, locked as tests. The cue list
+# is imported from the UI so these break if someone edits it, rather than
+# drifting apart silently.
+
+CUE_WORDS = [
+    "cannot", "can't", "not covered", "no information", "not in the",
+    "does not contain", "doesn't contain", "unable to", "not provided",
+    "not found", "not available", "outside", "no relevant",
+]
+
+
+def test_cue_list_still_matches_the_ui():
+    """If the UI's cue list changes, these tests should be revisited."""
+    from heinzy.webui.app import _ABSTAIN_CUES
+
+    assert set(_ABSTAIN_CUES) == set(CUE_WORDS)
+
+
+@pytest.mark.parametrize(
+    "answer_text",
+    [
+        # A real answer that happens to contain cue words. A keyword scanner
+        # calls this a refusal. It is not one.
+        "Up to 12 units may be taken outside Heinz College.",
+        "Exam schedules are not available in this handbook, but the internship "
+        "requirement is ten weeks.",
+        "Students cannot exceed 60 units per semester without advisor approval.",
+    ],
+)
+def test_real_answers_containing_cue_words_are_not_refusals(cfg, answer_text):
+    """The in-corpus half of the ticket's QA."""
+    from heinzy.generation.generator import Generator
+    from heinzy.generation import generator as generator_module
+    from heinzy.retrieval.store import ScoredChunk
+
+    hits = [ScoredChunk("c1", "text", 0.9, "doc", "4.1. Core Courses", [1])]
+
+    class _R:
+        def raise_for_status(self): pass
+        def json(self): return {"message": {"content": answer_text}}
+
+    generator_module.requests.post = lambda *a, **k: _R()
+    answer = Generator(cfg).generate("a real question", hits)
+
+    assert any(c in answer_text.lower() for c in CUE_WORDS), "test case is pointless"
+    assert not answer.refused, "a keyword scan would have mis-flagged this"
+
+
+def test_refusal_with_no_cue_words_is_still_caught(cfg):
+    """The out-of-corpus half. A refusal phrased to dodge every cue word."""
+    from heinzy.generation.generator import Generator
+    from heinzy.generation import generator as generator_module
+    from heinzy.retrieval.store import ScoredChunk
+
+    hits = [ScoredChunk("c1", "text", 0.9, "doc", "4.1. Core Courses", [1])]
+    reply = "INSUFFICIENT_CONTEXT"
+
+    class _R:
+        def raise_for_status(self): pass
+        def json(self): return {"message": {"content": reply}}
+
+    generator_module.requests.post = lambda *a, **k: _R()
+    answer = Generator(cfg).generate("an out of corpus question", hits)
+
+    assert not any(c in reply.lower() for c in CUE_WORDS), "test case is pointless"
+    assert answer.refused, "sentinel refusal missed"
+
+
+def test_layer_one_refusal_carries_no_prose_to_scan_at_all(cfg):
+    """When the gate fires the model is never called, so there is no wording."""
+    from heinzy.generation.generator import Generator
+
+    answer = Generator(cfg).generate("anything", [])
+    assert answer.refused
+    assert answer.raw_text is None

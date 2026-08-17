@@ -26,7 +26,15 @@ retrieval:
   # system refuses. 0.0 disables the gate (every question gets context, so the
   # only thing preventing a plausible-sounding answer is the prompt).
   # Calibrate with: python scripts/calibrate_floor.py
-  score_floor: 0.0
+  #
+  # 0.75 sits inside the separating window measured on the real handbook, where
+  # the lowest in-corpus question scores 0.7698 and the highest out-of-corpus
+  # one scores 0.7449. That window is only 0.0249 wide, so this is a real gate
+  # rather than a comfortable one. A legitimate question that happens to score
+  # 0.74 will be refused. Re-run the calibration after any change to chunking,
+  # k, or the embedding model, and widen the question set before trusting the
+  # margin further.
+  score_floor: 0.75
 
 # ---- Vector store (S4) -----------------------------------------------------
 # Accessed only through the VectorStore protocol in heinzy/retrieval/store.py
