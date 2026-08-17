@@ -76,9 +76,13 @@ Pattern: **one shared Ollama host**, everyone else only sets `MODEL_ENDPOINT`.
 # On the shared machine (Docker + NVIDIA GPU recommended):
 docker compose -f docker-compose.ollama.yml up -d
 
-# Pull once (cached in the named volume). Prefer 9b on 8GB VRAM; 12b if it fits:
-docker compose -f docker-compose.ollama.yml exec ollama ollama pull gemma2:9b
-# docker compose -f docker-compose.ollama.yml exec ollama ollama pull gemma2:12b
+# Pull once, cached in the named volume. gemma3:12b is what config.yaml targets
+# and needs roughly 8GB. Fall back to gemma2:9b on a smaller card.
+docker compose -f docker-compose.ollama.yml exec ollama ollama pull gemma3:12b
+# docker compose -f docker-compose.ollama.yml exec ollama ollama pull gemma2:9b
+#
+# Not gemma2:12b. That tag does not exist and the pull fails with "file does
+# not exist". Gemma 2 ships 2b, 9b and 27b, and a 12B Gemma is gemma3:12b.
 ```
 
 Tell teammates the reachable URL (e.g. `http://10.0.0.12:11434`). They put that
