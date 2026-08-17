@@ -76,13 +76,9 @@ Pattern: **one shared Ollama host**, everyone else only sets `MODEL_ENDPOINT`.
 # On the shared machine (Docker + NVIDIA GPU recommended):
 docker compose -f docker-compose.ollama.yml up -d
 
-# Pull once, cached in the named volume. gemma3:12b is what config.yaml targets
-# and needs roughly 8GB. Fall back to gemma2:9b on a smaller card.
-docker compose -f docker-compose.ollama.yml exec ollama ollama pull gemma3:12b
-# docker compose -f docker-compose.ollama.yml exec ollama ollama pull gemma2:9b
-#
-# Not gemma2:12b. That tag does not exist and the pull fails with "file does
-# not exist". Gemma 2 ships 2b, 9b and 27b, and a 12B Gemma is gemma3:12b.
+# Pull once (cached in the named volume). Prefer 9b on 8GB VRAM; 12b if it fits:
+docker compose -f docker-compose.ollama.yml exec ollama ollama pull gemma2:9b
+# docker compose -f docker-compose.ollama.yml exec ollama ollama pull gemma2:12b
 ```
 
 Tell teammates the reachable URL (e.g. `http://10.0.0.12:11434`). They put that
@@ -168,6 +164,28 @@ confident guess.
 |-------|-----------|-----------|------------------|
 | 1, no context | fewer than `min_hits` chunks clear `retrieval.score_floor` | **the model is never called**, so it cannot be talked out of it | `no_retrieved_context` |
 | 2, insufficient context | chunks cleared the floor but don't answer the question | model emits `generation.abstain.sentinel`, which we detect and convert to a refusal | `model_insufficient_context` |
+
+Layer 1 is evaluated by a policy engine rather than by an inline condition, so
+the decision is auditable alongside every other governed action. Two engines
+implement the same rule, chosen by `generation.policy.engine`.
+
+`builtin` is the deterministic count check. No extra dependency, always
+available, and what a plain `pip install -e .` gives you.
+
+`agt` registers the same condition with the Microsoft Agent Governance Toolkit
+as a `PolicyRule` whose validator returns False to deny, and the allow or deny
+lands in the kernel's audit log as `request_denied` with reason
+`policy_violation`. Install it with `pip install -e ".[governance]"`.
+
+Asking for `agt` without the extra installed **denies every request** rather
+than falling back to `builtin`. A safety gate that silently downgrades when its
+dependency is missing still reports as governed while enforcing nothing, which
+is worse than the plain `if` it replaced.
+
+Layer 2 lives in [`heinzy/generation/abstain.py`](heinzy/generation/abstain.py),
+deliberately apart from Layer 1, because the two fail differently. Layer 1 is
+structural and replayable. Layer 2 is a model judgement that changes with the
+model and has to be measured per model rather than assumed.
 
 Layer 2 is not optional. Nearest neighbour search always returns *k* chunks and
 has no way to report "no match", so every question retrieves something that
@@ -286,6 +304,27 @@ python scripts/check_model_host.py
 Exits non-zero when the host is unreachable, and separately when it is up but
 not serving the configured tag.
 
+### Running it in the container
+
+The same eval runs inside the Docker image, which is what makes the result a
+property of the shipped artifact rather than of one laptop.
+
+```bash
+docker build -t heinzy .
+docker run --rm \
+  -e MODEL_ENDPOINT=http://host.docker.internal:11434 \
+  -v "$(pwd)/data/corpus:/app/data/corpus:ro" \
+  heinzy python scripts/eval_abstention.py --backend memory
+```
+
+The corpus is mounted rather than baked in, since `.dockerignore` keeps
+`data/corpus` out of the image and the handbook is shared out of band. Point
+`MODEL_ENDPOINT` at the shared host instead of `host.docker.internal` when
+running anywhere other than the machine hosting the model.
+
+Verified on the real handbook with `gemma3:12b`, ten of ten refused and six of
+six answered, matching the host run exactly at `config_hash=a576a8c2c267`.
+
 ### Reproducibility
 
 Runs are byte identical, with **16 of 16 answers matching across two consecutive
@@ -356,6 +395,8 @@ heinzy/
   generation/             # generation layer (task A3) — done
     generator.py          #   chunks -> grounded, cited answer via Ollama
     grounding.py          #   citation extraction + retrieved-set check (A3b)
+    abstain.py            #   Layer 2, the insufficient-context sentinel
+    policy.py             #   Layer 1 as a policy rule, builtin or AGT engine
   eval/
     abstention.py         #   out-of-corpus refusal eval + fixture store (A3b)
   pipeline.py             # shared ingest-and-populate-store orchestration
@@ -373,6 +414,7 @@ scripts/
 tests/test_retrieval.py      # locks the retrieval contract
 tests/test_store.py          # locks S4 get_store / adapter contract
 tests/test_generation_grounding.py  # locks the refusal + citation contract (A3b)
+tests/test_policy_abstain.py        # locks the Layer 1 policy + fail-closed contract
 docker-compose.ollama.yml    # shared Gemma/Ollama host for the team (S3)
 docker-compose.chroma.yml    # shared Chroma host for the team (S4)
 data/corpus/             # MISM PDFs go here (gitignored, shared out of band — S6)
