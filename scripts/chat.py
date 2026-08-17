@@ -1,6 +1,8 @@
 
 from __future__ import annotations
 
+import argparse
+
 from heinzy.common.config import load_config
 from heinzy.generation.generator import Generator
 from heinzy.pipeline import ingest_and_populate_store
@@ -34,7 +36,14 @@ def print_answer(answer) -> None:
 
 
 def main() -> None:
+    ap = argparse.ArgumentParser()
+    ap.add_argument("--backend", default=None, choices=["memory", "chroma"],
+                    help="override vector_store.backend for this run only")
+    args = ap.parse_args()
+
     cfg = load_config()
+    if args.backend is not None:
+        cfg.vector_store.backend = args.backend
     store = ingest_and_populate_store(cfg)
     retriever = Retriever(cfg, store=store)
     generator = Generator(cfg)
