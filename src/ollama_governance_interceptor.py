@@ -1,69 +1,63 @@
 import yaml
-import json
-from datetime import datetime
-from urllib.parse import urlparse
+from agent_governance_toolkit_core.policy import PolicyEngine, PolicyEvaluator
+from agent_governance_toolkit_core.audit import AuditLogger
 
 class OllamaGovernanceInterceptor:
     def __init__(self, policy_path="policies/governance_policy.yaml"):
-        with open(policy_path, "r") as f:
-            self.policy = yaml.safe_load(f)
-        self.rules = self.policy.get("rules", [])
+        self.policy_path = policy_path
+        # Initialize AGT Core Policy Engine & Audit Logger
+        self.engine = PolicyEngine.from_file(policy_path)
+        self.logger = AuditLogger(log_file="heinzy_audit.log")
 
-    def evaluate_tool_call(self, tool_name: str, tool_args: dict) -> dict:
+    def evaluate_tool_call(self, tool_name: str, tool_args: dict, user_query: str = "") -> dict:
         """
-        Intercepts Ollama tool calling before execution.
-        Returns evaluation decision: ALLOW, DENY, or REQUIRE_APPROVAL.
+        Evaluates Ollama tool calling through Microsoft AGT Core modules.
         """
         action_type = tool_args.get("action_type", tool_name)
         url = tool_args.get("url", "")
 
-        # 1. Check write action restrictions
-        if action_type in ["create", "update", "delete", "insert"]:
-            return self._format_decision("DENY", "block-write-actions", "Phase 1: Agent is strictly read-only.")
-
-        # 2. Check web search domain restrictions
-        if action_type == "web_search" or tool_name == "web_search":
-            domain = urlparse(url).netloc.lower()
-            # Allow cmu.edu or subdomains of cmu.edu (e.g., mism.cmu.edu)
-            if domain == "cmu.edu" or domain.endswith(".cmu.edu"):
-                return self._format_decision("REQUIRE_APPROVAL", "require-human-for-search", "Human approval required for official CMU domains.")
-            else:
-                return self._format_decision("DENY", "enforce-domain-allowlist", "Phase 2: Web searches restricted to official university domains.")
-
-        return self._format_decision("ALLOW", "default-allow", "Action permitted.")
-
-    def log_audit_event(self, agent_id: str, query: str, decision: dict):
-        log_entry = {
-            "timestamp": datetime.utcnow().isoformat() + "Z",
-            "agent_id": agent_id,
-            "query": query,
-            "policy_evaluation": {
-                "action_denied": decision["action"] == "DENY",
-                "hitl_triggered": decision["action"] == "REQUIRE_APPROVAL",
-                "rule_matched": decision["rule"]
-            }
-        }
-        with open("heinzy_audit.log", "a") as f:
-            f.write(json.dumps(log_entry) + "\n")
-
-    def _format_decision(self, action, rule, description):
-        return {
-            "action": action,
-            "rule": rule,
-            "description": description
+        context = {
+            "tool_name": tool_name,
+            "action_type": action_type,
+            "url": url,
+            "query": user_query
         }
 
-# Ollama Tool Call Wrapper Function
+        # Evaluate policy via AGT PolicyEngine
+        evaluation = self.engine.evaluate(context)
+        return evaluation
+
+    def log_activity(self, agent_id: str, user_query: str, tool_name: str, tool_args: dict, evaluation: dict, result_status: str, retrieved_chunks: list = None):
+        """
+        Logs complete activity lifecycle using AGT Audit Logger module.
+        """
+        self.logger.log_event(
+            agent_id=agent_id,
+            user_question=user_query,
+            tool_accessed=tool_name,
+            tool_arguments=tool_args,
+            chunks_retrieved=retrieved_chunks or [],
+            approval_decision=evaluation.get("decision"),
+            matched_rule=evaluation.get("rule_matched"),
+            status=result_status
+        )
+
+# Tool Execution Wrapper using AGT Modules
 def execute_ollama_tool(tool_name: str, tool_args: dict, agent_id: str = "heinzy-advisor", query: str = ""):
     interceptor = OllamaGovernanceInterceptor()
-    decision = interceptor.evaluate_tool_call(tool_name, tool_args)
-    interceptor.log_audit_event(agent_id, query, decision)
+    eval_result = interceptor.evaluate_tool_call(tool_name, tool_args, user_query=query)
+    
+    decision = eval_result.get("action", "DENY")
+    
+    if decision == "DENY":
+        interceptor.log_activity(agent_id, query, tool_name, tool_args, eval_result, "DENIED")
+        raise PermissionError(f"[AGT DENIED] Rule: {eval_result.get('rule')} - {eval_result.get('reason')}")
+        
+    elif decision == "REQUIRE_APPROVAL":
+        interceptor.log_activity(agent_id, query, tool_name, tool_args, eval_result, "PAUSED_FOR_APPROVAL")
+        print(f"[AGT PAUSED] Approval required for tool '{tool_name}'.")
+        return {"status": "PAUSED_FOR_APPROVAL", "details": eval_result}
 
-    if decision["action"] == "DENY":
-        raise PermissionError(f"[GOVERNANCE DENIED] Rule: {decision['rule']} - {decision['description']}")
-    elif decision["action"] == "REQUIRE_APPROVAL":
-        print(f"[GOVERNANCE PAUSED] Approval needed for tool '{tool_name}'.")
-        return {"status": "PAUSED_FOR_APPROVAL", "details": decision}
-
-    print(f"[GOVERNANCE PASSED] Executing tool '{tool_name}'...")
-    return {"status": "SUCCESS", "details": decision}
+    interceptor.log_activity(agent_id, query, tool_name, tool_args, eval_result, "SUCCESS")
+    print(f"[AGT PASSED] Executing tool '{tool_name}'...")
+    return {"status": "SUCCESS", "details": eval_result}
