@@ -34,9 +34,10 @@ def main() -> int:
     gen = Generator(cfg)
     print(f"endpoint  {gen.endpoint}")
     print(f"wanted    {gen.model_tag}")
+    print(f"auth      {'basic auth from MODEL_BASIC_AUTH' if gen.auth else 'none'}")
 
     try:
-        resp = requests.get(f"{gen.endpoint}/api/tags", timeout=10)
+        resp = requests.get(f"{gen.endpoint}/api/tags", timeout=10, auth=gen.auth)
         resp.raise_for_status()
     except requests.RequestException as exc:
         print(f"\nUNREACHABLE. {type(exc).__name__} talking to {gen.endpoint}")

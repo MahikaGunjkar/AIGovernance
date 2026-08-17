@@ -62,12 +62,13 @@ def cfg():
 @pytest.fixture
 def stub_model(monkeypatch):
     """Replace the Ollama call. Returns a dict recording whether it was hit."""
-    calls: dict = {"count": 0, "payload": None}
+    calls: dict = {"count": 0, "payload": None, "auth": None}
 
     def _install(content: str):
-        def fake_post(url, json=None, timeout=None):
+        def fake_post(url, json=None, timeout=None, auth=None):
             calls["count"] += 1
             calls["payload"] = json
+            calls["auth"] = auth
             return _FakeResponse(content)
 
         monkeypatch.setattr(generator_module.requests, "post", fake_post)
@@ -312,3 +313,22 @@ def test_bare_parenthetical_citations(text, expected):
     """gemma cites without the "see" keyword; missing those made its perfect
     grounding score vacuous, with nothing being checked at all."""
     assert extract_citations(text) == expected
+
+
+def test_basic_auth_is_sent_when_configured(cfg, stub_model, monkeypatch):
+    """The shared host sits behind a tunnel, and Ollama has no auth of its own.
+
+    Credentials come from the environment rather than config, since config is
+    committed and the tunnel URL and password are not.
+    """
+    monkeypatch.setenv("MODEL_BASIC_AUTH", "heinz:secret")
+    calls = stub_model("some answer")
+    Generator(cfg).generate("q", HITS)
+    assert calls["auth"] == ("heinz", "secret")
+
+
+def test_no_auth_sent_when_unset(cfg, stub_model, monkeypatch):
+    monkeypatch.delenv("MODEL_BASIC_AUTH", raising=False)
+    calls = stub_model("some answer")
+    Generator(cfg).generate("q", HITS)
+    assert calls["auth"] is None

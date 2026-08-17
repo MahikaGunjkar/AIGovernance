@@ -55,6 +55,14 @@ from heinzy.retrieval.store import ScoredChunk
 
 _DEFAULT_ENDPOINT = "http://localhost:11434"
 
+
+def _basic_auth_from_env() -> tuple[str, str] | None:
+    """Read MODEL_BASIC_AUTH as user:password, or None when the tunnel is open."""
+    raw = (os.environ.get("MODEL_BASIC_AUTH") or "").strip()
+    if not raw or ":" not in raw:
+        return None
+    user, _, password = raw.partition(":")
+    return user, password
 _DEFAULT_SENTINEL = "INSUFFICIENT_CONTEXT"
 _DEFAULT_REFUSAL = (
     "I can't answer that from the MISM handbook. The handbook sections I can "
@@ -142,6 +150,10 @@ class Generator:
     def __init__(self, cfg) -> None:
         self.model_tag = os.environ.get("MODEL_TAG") or cfg.model.tag
         self.endpoint = (getattr(cfg.model, "endpoint", "") or _DEFAULT_ENDPOINT).rstrip("/")
+        # The shared host runs behind a tunnel, and Ollama has no auth of its
+        # own, so the tunnel should carry basic auth. Credentials come from the
+        # environment and never from config, which is committed.
+        self.auth = _basic_auth_from_env()
 
         # Abstention knobs live in config (S5). getattr chains keep this working
         # against an older config.yaml that predates the generation section.
@@ -192,6 +204,7 @@ class Generator:
                 "options": {"temperature": self.temperature, "seed": self.seed},
             },
             timeout=180,
+            auth=self.auth,
         )
         resp.raise_for_status()
         raw = resp.json()["message"]["content"]
