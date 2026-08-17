@@ -32,6 +32,12 @@ store = [
 dev = [
     "pytest>=8.0.0",
 ]
+# Web UI for manual testing of the RAG chat. heinzy/webui/app.py imports flask
+# unconditionally, so without this the package imports fail and tests/test_webui.py
+# cannot even be collected.
+webui = [
+    "flask>=3.0,<4",
+]
 # Policy-engine backend for Layer 1 abstention (#11). Optional on purpose: the
 # builtin engine keeps a plain install working, and this pulls a sizeable
 # dependency tree that most of the team does not need locally.
