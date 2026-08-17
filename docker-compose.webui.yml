@@ -1,0 +1,38 @@
+# Web UI service (tickets #17 / #18).
+#
+# Runs the Flask RAG chat UI in the same image as the rest of the app, wired to
+# the shared Chroma and Gemma hosts through the SAME env vars the CLI uses. No
+# new setup burden: set CHROMA_HOST and MODEL_ENDPOINT (and optionally
+# MODEL_TAG) in your .env, then:
+#
+#     docker compose -f docker-compose.webui.yml up --build
+#     # open http://localhost:5000
+#
+# The corpus must be reachable the same way ask_handbook.py needs it: either the
+# shared Chroma already has the handbook indexed, or data/corpus/ is mounted so
+# first request ingests it. Mount is included below.
+
+services:
+  heinzy-ui:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    command: ["python", "-m", "heinzy.webui.app"]
+    ports:
+      - "5000:5000"
+    environment:
+      # Same configuration surface as the CLI — nothing new to learn.
+      CHROMA_HOST: "${CHROMA_HOST}"        # LAN IP / host of the shared Chroma
+      MODEL_ENDPOINT: "${MODEL_ENDPOINT}"  # http://<gemma-host>:11434
+      MODEL_TAG: "${MODEL_TAG:-}"          # optional override of config model.tag
+      HEINZY_UI_HOST: "0.0.0.0"
+      HEINZY_UI_PORT: "5000"
+    volumes:
+      # So first-request ingestion can see the handbook PDFs (gitignored, shared
+      # out of band). Harmless if the shared Chroma already has them indexed —
+      # pipeline skips already-indexed docs via store.has_doc().
+      - ./data/corpus:/app/data/corpus:ro
+    # If Chroma/Gemma run as compose services on the same network instead of
+    # external hosts, add them here and set CHROMA_HOST / MODEL_ENDPOINT to the
+    # service names. As written this targets external shared hosts (the team's
+    # current S3/S4 pattern).
