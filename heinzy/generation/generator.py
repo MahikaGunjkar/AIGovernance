@@ -44,15 +44,17 @@ local Ollama default so this runs on a dev machine that already has Ollama up.
 from __future__ import annotations
 
 import os
-import re
 from dataclasses import dataclass, field
 
 import requests
 
+from heinzy.generation.abstain import detects_refusal
 from heinzy.generation.grounding import extract_citations, unsupported_citations
+from heinzy.generation.policy import REASON_NO_CONTEXT, get_context_policy
 from heinzy.retrieval.store import ScoredChunk
 
 _DEFAULT_ENDPOINT = "http://localhost:11434"
+
 _DEFAULT_SENTINEL = "INSUFFICIENT_CONTEXT"
 _DEFAULT_REFUSAL = (
     "I can't answer that from the MISM handbook. The handbook sections I can "
@@ -64,15 +66,9 @@ _DEFAULT_REFUSAL = (
 # handbook section came close" needs a different follow-up than "the handbook
 # covers this area but not this detail", and the eval harness reports on which
 # layer fired.
-REASON_NO_CONTEXT = "no_retrieved_context"
+# REASON_NO_CONTEXT is re-exported from the policy module so callers keep one
+# import site for both layers' reasons.
 REASON_INSUFFICIENT = "model_insufficient_context"
-
-_NON_ALNUM = re.compile(r"[^A-Z0-9]")
-
-
-def _sentinel_key(text: str) -> str:
-    """Uppercase, alphanumerics only, so spacing and markup cannot hide it."""
-    return _NON_ALNUM.sub("", (text or "").upper())
 
 # The primary workflow is an advisor looking up policy on a student's behalf,
 # not a student asking the assistant directly. Keep the framing accurate to that
@@ -129,6 +125,9 @@ class Answer:
     # Model's untouched output, kept when `text` was replaced by refusal_text so
     # a reviewer can see what the model actually said.
     raw_text: str | None = None
+    # Which Layer 1 engine decided, builtin or agt. Stamped so a run's audit
+    # trail says whether the policy engine was actually in the loop.
+    policy_engine: str | None = None
 
     @property
     def is_grounded(self) -> bool:
@@ -154,7 +153,10 @@ class Generator:
             (getattr(abstain, "refusal_text", None) or _DEFAULT_REFUSAL).split()
         )
         self.system_prompt = SYSTEM_PROMPT_TEMPLATE.format(sentinel=self.sentinel)
-        self._sentinel_key = _sentinel_key(self.sentinel)
+
+        # Layer 1 lives in a policy object rather than an inline condition, so
+        # the decision can be evaluated and audited by a governance engine.
+        self.policy = get_context_policy(cfg)
 
         citations = getattr(generation, "citations", None)
         self.require_citations = bool(getattr(citations, "require", True))
@@ -163,11 +165,14 @@ class Generator:
         self.seed = getattr(generation, "seed", 0)
 
     def generate(self, query: str, hits: list[ScoredChunk]) -> Answer:
-        # Layer 1: nothing relevant retrieved -> refuse without calling the
-        # model. No context means no grounded answer is possible, so asking the
-        # model at all only invites one that isn't.
-        if len(hits) < self.min_hits:
-            return self._refusal(query, hits, REASON_NO_CONTEXT)
+        # Layer 1. Nothing relevant retrieved means no grounded answer is
+        # possible, so the model is never called. Asking it anyway only invites
+        # an answer that isn't grounded.
+        decision = self.policy.decide(len(hits))
+        if not decision.allowed:
+            return self._refusal(
+                query, hits, decision.reason, policy_engine=decision.engine
+            )
 
         context = "\n\n".join(
             f'[{h.section_path}] (p{h.source_pages}): {h.text}' for h in hits
@@ -191,14 +196,14 @@ class Generator:
         resp.raise_for_status()
         raw = resp.json()["message"]["content"]
 
-        # Layer 2: context cleared the floor but doesn't answer the question.
-        # Matched on the punctuation-stripped form, not equality: told to reply
-        # with exactly INSUFFICIENT_CONTEXT, llama3.2 replies "INSUFFICIENT
-        # CONTEXT" and gemma wraps it in a sentence or bolds it. An exact match
-        # scored those as answers, which is the same as having no layer 2 at
-        # all, a silent and total failure of the refusal path. Match loosely.
-        if self._sentinel_key and self._sentinel_key in _sentinel_key(raw):
-            return self._refusal(query, hits, REASON_INSUFFICIENT, raw_text=raw)
+        # Layer 2 lives in heinzy/generation/abstain.py. It answers a question
+        # no policy engine can, which is whether the excerpts actually contain
+        # the answer.
+        if detects_refusal(raw, self.sentinel):
+            return self._refusal(
+                query, hits, REASON_INSUFFICIENT, raw_text=raw,
+                policy_engine=decision.engine,
+            )
 
         cited = extract_citations(raw)
         unsupported = (
@@ -215,6 +220,7 @@ class Generator:
             sources=hits,
             cited_sections=cited,
             unsupported_citations=unsupported,
+            policy_engine=decision.engine,
         )
 
     def _refusal(
@@ -223,6 +229,7 @@ class Generator:
         hits: list[ScoredChunk],
         reason: str,
         raw_text: str | None = None,
+        policy_engine: str | None = None,
     ) -> Answer:
         return Answer(
             query=query,
@@ -232,4 +239,5 @@ class Generator:
             refused=True,
             refusal_reason=reason,
             raw_text=raw_text,
+            policy_engine=policy_engine,
         )

@@ -42,17 +42,10 @@ vector_store:
 
 # ---- Generation model (S3) -------------------------------------------------
 # Recorded for reproducibility + stamped into eval output. The model is served
-# on ONE shared Ollama host; teammates only set MODEL_ENDPOINT. Retrieval does
+# on the shared Ollama host; teammates only set MODEL_ENDPOINT. Retrieval does
 # not call this.
-#
-# Note on sizes, because this cost us a wrong assumption once. Gemma 2 ships as
-# 2b, 9b and 27b. There is no gemma2:12b, and asking Ollama for one fails with
-# "file does not exist". A 12B Gemma means gemma3:12b, a different generation,
-# so refusal behaviour has to be measured again rather than carried over from
-# any 9b run. Roughly 8GB at Q4, which fits a 16GB Colab T4 with less headroom
-# than 9b.
 model:
-  tag: "gemma3:12b"           # must match `ollama pull` on the shared host
+  tag: "gemma3:12b"           # Ollama "Gemma 12B" = gemma3:12b (gemma2 has no 12b)
   quantization: "Q4_K_M"      # Ollama default quant for these tags
   endpoint: "${MODEL_ENDPOINT}"   # filled from env, never committed
 
@@ -63,6 +56,20 @@ model:
 #   2. sentinel below. Context passed the floor but does not actually contain
 #      the answer, so the model itself signals the gap in a checkable way.
 generation:
+  # Layer 1 of abstention is evaluated by a policy engine rather than by an
+  # inline condition, so the decision can be audited alongside every other
+  # governed action (#11).
+  #   builtin  deterministic count check, no extra dependency, always available
+  #   agt      Microsoft Agent Governance Toolkit, registers the same condition
+  #            as a PolicyRule and records allow/deny in the kernel audit log.
+  #            Needs `pip install -e ".[governance]"`.
+  # Requesting agt without the extra installed DENIES rather than falling back
+  # to builtin. A safety gate that silently downgrades when its dependency is
+  # missing still looks governed while enforcing nothing.
+  policy:
+    engine: "builtin"
+    agent_id: "heinzy-advisor"
+
   # Sampling. Ollama defaults to temperature 0.8, which made the same question
   # refuse on one run and answer on the next, and made the config_hash stamped
   # into every eval result a promise the system could not keep. A governed
