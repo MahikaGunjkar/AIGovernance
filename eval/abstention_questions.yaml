@@ -1,4 +1,4 @@
-# Abstention / grounding evaluation set (A3b).
+# Abstention / grounding evaluation set.
 #
 # out_of_corpus: the handbook cannot answer these. PASS = the system refuses.
 #   Absence verified against the real handbook, not assumed.
@@ -117,7 +117,7 @@ in_corpus:
   # only that concentrations need no extra electives, and the five names live in
   # 7.1-7.5, none of which surface for that phrasing. A refusal there is correct
   # behaviour given the context, so scoring it as over-refusal blamed generation
-  # for a retrieval gap. Tracked as a retrieval issue (A2), not an A3b one.
+  # for a retrieval gap. That is a retrieval problem, not a generation one.
   - id: ic-04
     question: "What courses are required for the AI Management concentration?"
   - id: ic-05

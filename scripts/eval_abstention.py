@@ -1,5 +1,5 @@
 """
-Prove the grounded-answering claim (A3b): on questions the corpus cannot
+Prove the grounded-answering claim. On questions the corpus cannot
 answer, the system says it cannot answer instead of producing plausible text.
 
 Exits non-zero if any out-of-corpus question got answered, any in-corpus

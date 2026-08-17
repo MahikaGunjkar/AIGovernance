@@ -1,5 +1,5 @@
 """
-Abstention / grounding evaluation (A3b "done when").
+Abstention / grounding evaluation. Proves the claim behind issue #12.
 
 The claim being tested: on questions the corpus cannot answer, the system says
 it cannot answer, instead of producing plausible text.

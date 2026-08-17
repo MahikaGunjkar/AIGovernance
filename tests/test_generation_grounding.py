@@ -1,5 +1,5 @@
 """
-Grounded-answering contract tests (A3b).
+Grounded-answering contract tests.
 
 These lock the behaviour that matters: the system refuses rather than invents,
 and it never cites a section retrieval didn't return. They run fully offline,

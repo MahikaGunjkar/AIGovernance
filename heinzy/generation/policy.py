@@ -1,5 +1,5 @@
 """
-Layer 1 of abstention as a policy decision (A3b, per #11).
+Layer 1 of abstention as a policy decision. See issue #11.
 
 The question Layer 1 asks is structural. Did retrieval return enough context to
 ground an answer. That is exactly the shape a policy engine evaluates, allow or

@@ -1,5 +1,5 @@
 """
-Pick retrieval.score_floor from data instead of guessing (A3b, layer 1).
+Pick retrieval.score_floor from data instead of guessing. Layer 1 depends on it.
 
 Nearest-neighbour search always returns k chunks, so there is no "no match".
 The floor is what turns "nothing scored well" into a refusal, and it only works

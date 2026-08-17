@@ -1,5 +1,5 @@
 """
-Grounded answer generation over retrieved chunks (A3 + A3b).
+Grounded answer generation over retrieved chunks.
 
 pre: hits is a list of ScoredChunk from a completed retrieval, already filtered
      by retrieval.score_floor. It may be empty, which is the primary refusal path
@@ -125,7 +125,7 @@ class Answer:
     text: str
     model_tag: str
     sources: list[ScoredChunk]
-    # --- grounding / abstention contract (A3b) ---
+    # --- grounding / abstention contract ---
     refused: bool = False
     refusal_reason: str | None = None
     cited_sections: list[str] = field(default_factory=list)

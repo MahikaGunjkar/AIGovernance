@@ -21,7 +21,7 @@ embed:
 # ---- Retrieval (A2) --------------------------------------------------------
 retrieval:
   k: 5                    # top-k chunks returned; read from config, never hardcoded
-  # Layer 1 of abstention (A3b): hits below this cosine similarity are dropped
+  # Layer 1 of abstention. Hits below this cosine similarity are dropped
   # BEFORE generation. If nothing survives, the model is never called and the
   # system refuses. 0.0 disables the gate (every question gets context, so the
   # only thing preventing a plausible-sounding answer is the prompt).
@@ -49,7 +49,7 @@ model:
   quantization: "Q4_K_M"      # Ollama default quant for these tags
   endpoint: "${MODEL_ENDPOINT}"   # filled from env, never committed
 
-# ---- Grounded answering / abstention (A3b) ---------------------------------
+# ---- Grounded answering / abstention -----------------------------------------
 # "Answer only from retrieved chunks, otherwise say you can't." Two layers:
 #   1. retrieval.score_floor above. Nothing relevant was retrieved, so refuse
 #      without calling the model at all. Deterministic, cannot be talked out of.
@@ -97,4 +97,4 @@ generation:
 
 # ---- Prompt versioning -----------------------------------------------------
 prompt:
-  version: "p1"           # p1 = grounded/abstention prompt (A3b)
+  version: "p1"           # p1 = grounded/abstention prompt

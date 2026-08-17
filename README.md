@@ -10,7 +10,7 @@ and do.
 - ✅ Ingestion — PDF → chunks → embeddings
 - ✅ Retrieval — Chroma-backed
 - ✅ Generation — Gemma via Ollama
-- ✅ Grounded answering + abstention (A3b) — answers only from retrieved chunks,
+- ✅ Grounded answering + abstention (A3) — answers only from retrieved chunks,
   refuses 10/10 out-of-corpus questions on the real handbook
   ([how it works](#grounded-answering--abstention-a3b))
 - ✅ Docker image — builds and runs standalone; real answers need Gemma + Chroma reachable (see below)
@@ -150,7 +150,7 @@ retrieval + generation (`store.has_doc()` check).
 
 ---
 
-## Grounded answering & abstention (A3b)
+## Grounded answering & abstention
 
 The assistant answers **only** from retrieved handbook chunks, and when the
 handbook doesn't contain the answer it says so instead of producing plausible
@@ -342,7 +342,7 @@ property, so re-run before trusting it on a different model.
 
 ### Known issues this surfaced elsewhere
 
-Neither is an A3b bug, but both degrade grounded answering and belong to other
+Neither is a generation bug, but both degrade grounded answering and belong to other
 areas.
 
 - **Ingestion (A1).** The page footer `MISM Handbook Addendum <n>` is extracted
@@ -394,11 +394,11 @@ heinzy/
     stores/chroma_store.py  #   Chroma HTTP adapter
   generation/             # generation layer (task A3) — done
     generator.py          #   chunks -> grounded, cited answer via Ollama
-    grounding.py          #   citation extraction + retrieved-set check (A3b)
+    grounding.py          #   citation extraction + retrieved-set check
     abstain.py            #   Layer 2, the insufficient-context sentinel
     policy.py             #   Layer 1 as a policy rule, builtin or AGT engine
   eval/
-    abstention.py         #   out-of-corpus refusal eval + fixture store (A3b)
+    abstention.py         #   out-of-corpus refusal eval + fixture store
   pipeline.py             # shared ingest-and-populate-store orchestration
 eval/
   abstention_questions.yaml  # 8 out-of-corpus + 5 in-corpus control questions
@@ -406,14 +406,14 @@ eval/
 scripts/
   ask_handbook.py         # ingest + retrieve + generate, one question via --query
   chat.py                 # same, interactive
-  eval_abstention.py      # proves the A3b claim; non-zero exit on failure
+  eval_abstention.py      # proves the refusal claim; non-zero exit on failure
   check_model_host.py     # is MODEL_ENDPOINT live and serving the configured tag?
   calibrate_floor.py      # is a score floor viable on this corpus?
   smoke_retrieval.py      # placeholder-chunk demo, no real data needed
   smoke_store.py          # store factory smoke (memory or chroma)
 tests/test_retrieval.py      # locks the retrieval contract
 tests/test_store.py          # locks S4 get_store / adapter contract
-tests/test_generation_grounding.py  # locks the refusal + citation contract (A3b)
+tests/test_generation_grounding.py  # locks the refusal + citation contract
 tests/test_policy_abstain.py        # locks the Layer 1 policy + fail-closed contract
 docker-compose.ollama.yml    # shared Gemma/Ollama host for the team (S3)
 docker-compose.chroma.yml    # shared Chroma host for the team (S4)
@@ -435,7 +435,7 @@ data/index/              # built indexes (gitignored)
 | Shared Gemma host (S3) | 🟡 compose ready | `docker-compose.ollama.yml` — one host for the team; A3 still must call it |
 | Ingestion bodies (A1) | ⬜ skeleton only | functions `raise NotImplementedError`; contracts written in docstrings |
 | Generation/answering (A3) | ✅ done | calls shared `MODEL_ENDPOINT` (Gemma via Ollama) |
-| Grounded answering + abstention (A3b) | ✅ done | two-layer refusal, citation check, eval harness. On the real handbook with the configured `gemma3:12b`, 10/10 out-of-corpus refused, 6/6 controls answered, 0 unsupported citations |
+| Grounded answering + abstention (A3) | ✅ done | two-layer refusal, citation check, eval harness. On the real handbook with the configured `gemma3:12b`, 10/10 out-of-corpus refused, 6/6 controls answered, 0 unsupported citations |
 | Citations (A4) | 🟡 checked, not rendered | cited sections verified against the retrieved set; provenance flows from retrieval |
 | Event log (A5) | ⬜ not started | append-only audit log (out of scope on this branch) |
 | Eval harness (A6) | ⬜ not started | owner: Lisa |

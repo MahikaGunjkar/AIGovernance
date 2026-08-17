@@ -1,5 +1,5 @@
 """
-Layer 2 of abstention, the insufficient-context check (A3b, split out per #11).
+Layer 2 of abstention, the insufficient-context check. Split out per issue #11.
 
 Layer 1 asks a structural question that a policy engine can answer on its own.
 Did retrieval return enough to work with. Layer 2 asks a question no engine can

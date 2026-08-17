@@ -1,5 +1,5 @@
 """
-Grounding checks: did the answer stay inside the retrieved chunks? (A3b)
+Grounding checks. Did the answer stay inside the retrieved chunks?
 
 The generation prompt asks the model to cite the sections it used, in the form
 `(see "4.1. Required Courses")`. This module turns that convention into a
