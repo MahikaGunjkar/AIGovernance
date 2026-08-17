@@ -243,17 +243,18 @@ matter, because an unanswerable control fails for the wrong reason and makes a
 correct refusal look like a bug.
 
 Real handbook (`mism-student-handbook.pdf`, 14 pages into 28 chunks),
-`config_hash=7502dd99ab55`, k=5, temperature 0.
+`config_hash=77179cb968f0`, k=5, temperature 0.
 
 | Model | Out-of-corpus refused | Controls answered | Unsupported citations | Contentless answers |
 |-------|----------------------|-------------------|-----------------------|---------------------|
-| `gemma2:9b`, the configured model | **10/10** | 6/6 | 0 | 0 |
+| `gemma3:12b`, the configured model | **10/10** | 6/6 | 0 | 0 |
+| `gemma2:9b` | **10/10** | 6/6 | 0 | 0 |
 | `gemma4:e2b` | **10/10** | 6/6 | 0 | 0 |
 | `llama3.2:latest` | **9/10** | 6/6 | 0 | 0 |
 
-`gemma2:9b` is what `config.yaml` declares, so that row is the one describing
-shipped behaviour. It ran with no `MODEL_TAG` override, and all six of its
-answers carried a citation that resolved against the retrieved set.
+`gemma3:12b` is what `config.yaml` declares, so that row describes shipped
+behaviour. It ran with no `MODEL_TAG` override, and every one of its six answers
+carried a citation that resolved against the retrieved set.
 
 The single `llama3.2` miss is `ooc-04`, where it deflects to Career Services
 rather than inventing a policy. Not a refusal, but not the fabrication the
@@ -388,7 +389,7 @@ data/index/              # built indexes (gitignored)
 | Shared Gemma host (S3) | 🟡 compose ready | `docker-compose.ollama.yml` — one host for the team; A3 still must call it |
 | Ingestion bodies (A1) | ⬜ skeleton only | functions `raise NotImplementedError`; contracts written in docstrings |
 | Generation/answering (A3) | ✅ done | calls shared `MODEL_ENDPOINT` (Gemma via Ollama) |
-| Grounded answering + abstention (A3b) | ✅ done | two-layer refusal, citation check, eval harness. On the real handbook with the configured `gemma2:9b`, 10/10 out-of-corpus refused, 6/6 controls answered, 0 unsupported citations |
+| Grounded answering + abstention (A3b) | ✅ done | two-layer refusal, citation check, eval harness. On the real handbook with the configured `gemma3:12b`, 10/10 out-of-corpus refused, 6/6 controls answered, 0 unsupported citations |
 | Citations (A4) | 🟡 checked, not rendered | cited sections verified against the retrieved set; provenance flows from retrieval |
 | Event log (A5) | ⬜ not started | append-only audit log (out of scope on this branch) |
 | Eval harness (A6) | ⬜ not started | owner: Lisa |
