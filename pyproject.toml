@@ -33,8 +33,8 @@ dev = [
     "pytest>=8.0.0",
 ]
 # Web UI for manual testing of the RAG chat. heinzy/webui/app.py imports flask
-# unconditionally, so without this the package imports fail and tests/test_webui.py
-# cannot even be collected.
+# unconditionally, so without this the package fails to import and
+# tests/test_webui.py cannot even be collected.
 webui = [
     "flask>=3.0,<4",
 ]
