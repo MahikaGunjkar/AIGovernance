@@ -13,7 +13,7 @@ and do.
 - ✅ Docker image — builds and runs standalone; real answers need Gemma + Chroma reachable (see below)
 - 🟡 Event log — retrieval only, generation not logged yet
 - ⬜ Eval harness
-- ⬜ Governance layer
+- ⬜ Governance layer (PEP lives on `feature/governance-policies`; this branch mounts it in Docker)
 
 Details: [Ownership & what's done](#ownership--whats-done).
 
@@ -196,6 +196,9 @@ notebooks/colab_gemma_ollama_host.ipynb  # Colab Gemma 12B + ngrok host (S3 / #1
 docs/colab_gemma_host.md # operator/teammate runbook for Colab host
 docker-compose.ollama.yml    # optional LAN Ollama fallback (S3)
 docker-compose.chroma.yml    # shared Chroma host for the team (S4)
+docker-compose.heinzy.yml    # app + mount feature/governance-policies src/policies (PEP)
+heinzy/governance/           # loader for mounted OllamaGovernanceInterceptor
+heinzy/tools/                # tool runners behind the PEP
 data/corpus/             # MISM PDFs go here (gitignored, shared out of band — S6)
 data/index/              # built indexes (gitignored)
 ```
@@ -217,7 +220,22 @@ data/index/              # built indexes (gitignored)
 | Citations (A4) | ⬜ not started | provenance already flows from retrieval |
 | Event log (A5) | ⬜ not started | append-only audit log (out of scope on this branch) |
 | Eval harness (A6) | ⬜ not started | owner: Lisa |
-| Governance layer | ⬜ not started | scaffolding on `feature/governance-policies`, not wired in — `agent_governance` dep doesn't exist |
+| Governance layer | 🟡 mount-ready | PEP (`OllamaGovernanceInterceptor`) on `feature/governance-policies` — mount via [`docker-compose.heinzy.yml`](docker-compose.heinzy.yml); tool runners gated on this branch |
+
+### Governance PEP mount (Docker)
+
+The governance branch is **not** merged or edited from here. Mount a worktree at runtime:
+
+```bash
+git worktree add ../AIGovernance-governance feature/governance-policies
+
+docker compose -f docker-compose.heinzy.yml build
+GOVERNANCE_HOST_PATH=../AIGovernance-governance docker compose -f docker-compose.heinzy.yml run --rm heinzy
+```
+
+Inside the container: `GOVERNANCE_SRC=/governance/src` and `GOVERNANCE_POLICY_PATH=/governance/policies/governance_policy.yaml`. When those are set, `Generator` advertises tools and every tool call goes through `OllamaGovernanceInterceptor.evaluate_tool_call` before stub runners in `heinzy/tools/`.
+
+Local (no Docker): set `GOVERNANCE_SRC` / `GOVERNANCE_POLICY_PATH` in `.env` to the same worktree paths (see `.env.template`).
 
 ### Swapping vector-store backends
 

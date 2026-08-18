@@ -48,3 +48,12 @@ model:
 # ---- Prompt versioning -----------------------------------------------------
 prompt:
   version: "p0"
+
+# ---- Governance (PEP mount from feature/governance-policies) ---------------
+# Runtime mount only — do not vendor that branch here. When GOVERNANCE_SRC is
+# set (see docker-compose.heinzy.yml), Generator enters the tool loop and every
+# tool call is gated by OllamaGovernanceInterceptor.
+governance:
+  enabled: true              # ignored unless GOVERNANCE_SRC mount is present
+  agent_id: "heinzy-advisor"
+  max_tool_rounds: 3

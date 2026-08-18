@@ -37,7 +37,10 @@ def main() -> None:
         print("  generating answer...", flush=True)
         answer = generator.generate(result.query, result.hits)
 
-        print(f"\nheinzy> {answer.text}\n")
+        if answer.paused_for_approval:
+            print(f"\nheinzy> [PAUSED_FOR_APPROVAL] {answer.text}\n")
+        else:
+            print(f"\nheinzy> {answer.text}\n")
         print("sources:")
         for h in answer.sources:
             print(f"  - [{h.section_path}] p{h.source_pages}  (score={h.score:.4f})")

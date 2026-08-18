@@ -1,0 +1,31 @@
+# Heinzy app with governance PEP mounted from feature/governance-policies.
+# Does not modify that branch — mount a local worktree/checkout at runtime.
+#
+# Setup (once):
+#   git worktree add ../AIGovernance-governance feature/governance-policies
+#
+# Run:
+#   docker compose -f docker-compose.heinzy.yml build
+#   GOVERNANCE_HOST_PATH=../AIGovernance-governance docker compose -f docker-compose.heinzy.yml run --rm heinzy
+#
+# Override the default command for ask/chat, e.g.:
+#   ... run --rm heinzy python scripts/ask_handbook.py --query "how many electives?"
+
+services:
+  heinzy:
+    build: .
+    image: heinzy:local
+    env_file:
+      - .env
+    environment:
+      GOVERNANCE_SRC: /governance/src
+      GOVERNANCE_POLICY_PATH: /governance/policies/governance_policy.yaml
+      # Optional: PYTHONPATH also includes the mount so direct imports work.
+      PYTHONPATH: /governance/src
+    volumes:
+      - ${GOVERNANCE_HOST_PATH:-../AIGovernance-governance}/src:/governance/src:ro
+      - ${GOVERNANCE_HOST_PATH:-../AIGovernance-governance}/policies:/governance/policies:ro
+      # PEP AuditLogger writes ./heinzy_audit.log (cwd=/app); bind the file dir only.
+      - ./data/audit:/app/data/audit
+    working_dir: /app
+    command: ["python", "scripts/smoke_retrieval.py"]
