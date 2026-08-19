@@ -10,6 +10,8 @@
 # Operator (on the LAN host):
 #   docker compose -f docker-compose.ollama.yml up -d
 #   docker compose -f docker-compose.ollama.yml exec ollama ollama pull gemma3:12b
+#   # smaller card: gemma2:9b. Note gemma2:12b does not exist, a 12B Gemma is
+#   # gemma3:12b.
 #
 # Smoke from another machine:
 #   curl http://<host>:11434/api/tags

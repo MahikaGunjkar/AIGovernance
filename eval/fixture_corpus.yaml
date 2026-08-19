@@ -1,0 +1,93 @@
+# Stand-in corpus for running the abstention eval WITHOUT the real handbook.
+#
+# The real MISM handbook PDF is gitignored and shared out of band (S6), so CI
+# and any freshly cloned checkout have no corpus at all. This file lets the
+# grounding/abstention machinery be exercised anyway.
+#
+# THIS IS NOT REAL HANDBOOK CONTENT. The numbers and policies below are made up
+# for testing retrieval and refusal behaviour. Never quote them to a student,
+# and never report fixture-mode results as evidence about the real handbook.
+# The harness prints a warning banner in this mode for that reason.
+#
+# doc_id is deliberately loud so it shows up in any log, citation, or CSV that
+# a fixture run produces.
+
+#
+# Section names mirror the real handbook so that fixture-mode and real-corpus
+# runs agree about what IS and ISN'T covered. Notably there is no academic
+# integrity section and no good-academic-standing section, because the real
+# handbook has neither, and ooc-09 and ooc-10 depend on that absence.
+
+doc_id: "FIXTURE-NOT-THE-REAL-HANDBOOK"
+
+chunks:
+  - section_path: "4.1. Course Requirements for MISM"
+    pages: [4]
+    text: >-
+      All MISM students must complete the required core course sequence covering
+      statistics, database management, economic analysis, organizational
+      design, distributed systems, and professional writing. Core courses must
+      be completed before the capstone project begins.
+
+  - section_path: "4.2. Analytic Elective Course"
+    pages: [5]
+    text: >-
+      Each MISM student must complete one analytic elective chosen from the
+      approved analytic elective list maintained by the program office.
+      Substitutions require written approval from the student's advisor.
+
+  - section_path: "6. General Elective Courses"
+    pages: [7]
+    text: >-
+      Students may take up to four general elective courses. Undergraduate
+      courses do not count toward units earned. If a student receives a grade
+      of B or better in an approved course, the units count toward the degree
+      but the grade is not factored into the Heinz College quality point
+      average.
+
+  - section_path: "7. Concentrations"
+    pages: [8]
+    text: >-
+      MISM students may optionally pursue a concentration in AI Management,
+      Health Informatics, Marketing and Social Media Analytics, Product
+      Management, or Tech Policy and Governance. A concentration requires
+      completing the designated course set for that area.
+
+  # Mirrors the real handbook's 7.1.1: the concentration *requirements* live in
+  # their own subsection, not in the section 7 overview. ic-04 asks for these.
+  - section_path: "7.1.1. AI Management Requirements"
+    pages: [9]
+    text: >-
+      Students wishing to complete a concentration in AI Management must
+      complete 36 units of the following coursework: Fundamentals of
+      Operationalizing AI (6 units), Responsible AI: Principles, Policies and
+      Practices (6 units), Machine Learning for Problem Solving (12 units), and
+      one approved AI systems elective (12 units).
+
+  - section_path: "8. Number of Units per Semester"
+    pages: [11]
+    text: >-
+      Students typically take 54 units per semester, which meets the degree
+      requirement of 162 total units. Students with a 3.5 cumulative quality
+      point average or higher may request advisor approval to increase to 60
+      units.
+
+  - section_path: "9. Internship Requirement"
+    pages: [12]
+    text: >-
+      Every MISM student must complete a summer internship between the first
+      and second academic year. The internship must be relevant to the
+      student's course of study and is reviewed by the program office.
+
+  - section_path: "10. Capstone Project"
+    pages: [13]
+    text: >-
+      The capstone project is a semester-long engagement in which student teams
+      deliver an information systems solution for an external client
+      organization. It is required for graduation.
+
+  - section_path: "11. Professional Seminar Course"
+    pages: [14]
+    text: >-
+      The professional seminar course develops communication and career skills.
+      Attendance is mandatory and the course is graded pass/fail.
