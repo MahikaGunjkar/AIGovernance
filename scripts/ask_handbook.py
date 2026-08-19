@@ -42,6 +42,11 @@ def main() -> None:
     answer = generator.generate(result.query, result.hits)
 
     print(f"model    : {answer.model_tag}")
+    print(f"question : {answer.query}\n")
+    if answer.paused_for_approval:
+        print("status   : PAUSED_FOR_APPROVAL (governance HITL)\n")
+    print(f"answer:\n{answer.text}\n")
+    print("sources:")
     print(f"question : {answer.query}")
 
     print(f"\nanswer:\n{answer.text}\n")
@@ -56,6 +61,10 @@ def main() -> None:
         print("sources:")
     for h in answer.sources:
         print(f"  - [{h.section_path}] p{h.source_pages}  (score={h.score:.4f})")
+    if answer.tool_events:
+        print("\ntool events:")
+        for ev in answer.tool_events:
+            print(f"  - {ev.get('status')}: {ev.get('tool')} {ev.get('args')}")
 
 
 if __name__ == "__main__":

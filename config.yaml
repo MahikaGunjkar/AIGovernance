@@ -50,6 +50,9 @@ vector_store:
 
 # ---- Generation model (S3) -------------------------------------------------
 # Recorded for reproducibility + stamped into eval output. The model is served
+# on the shared Colab Ollama host (notebooks/colab_gemma_ollama_host.ipynb);
+# teammates only set MODEL_ENDPOINT (ephemeral ngrok HTTPS URL). Retrieval does
+# not call this. Optional LAN fallback: docker-compose.ollama.yml.
 # on the shared Ollama host; teammates only set MODEL_ENDPOINT. Retrieval does
 # not call this.
 model:
@@ -105,4 +108,14 @@ generation:
 
 # ---- Prompt versioning -----------------------------------------------------
 prompt:
+  version: "p0"
+
+# ---- Governance (PEP mount from feature/governance-policies) ---------------
+# Runtime mount only — do not vendor that branch here. When GOVERNANCE_SRC is
+# set (see docker-compose.heinzy.yml), Generator enters the tool loop and every
+# tool call is gated by OllamaGovernanceInterceptor.
+governance:
+  enabled: true              # ignored unless GOVERNANCE_SRC mount is present
+  agent_id: "heinzy-advisor"
+  max_tool_rounds: 3
   version: "p1"           # p1 = grounded/abstention prompt
