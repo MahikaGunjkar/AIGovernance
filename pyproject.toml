@@ -20,6 +20,8 @@ dependencies = [
     "fastembed>=0.8.0",
     # Generation (calls Ollama's HTTP API).
     "requests>=2.31.0",
+    # Web UI for manual testing of the RAG chat. heinzy/webui/app.py imports flask
+    "flask>=3.0,<4",
 ]
 
 [project.optional-dependencies]
@@ -31,12 +33,6 @@ store = [
 ]
 dev = [
     "pytest>=8.0.0",
-]
-# Web UI for manual testing of the RAG chat. heinzy/webui/app.py imports flask
-# unconditionally, so without this the package fails to import and
-# tests/test_webui.py cannot even be collected.
-webui = [
-    "flask>=3.0,<4",
 ]
 # Policy-engine backend for Layer 1 abstention (#11). Optional on purpose: the
 # builtin engine keeps a plain install working, and this pulls a sizeable
