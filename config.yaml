@@ -21,7 +21,20 @@ embed:
 # ---- Retrieval (A2) --------------------------------------------------------
 retrieval:
   k: 5                    # top-k chunks returned; read from config, never hardcoded
-  score_floor: 0.0        # drop chunks below this similarity (0 = keep all)
+  # Layer 1 of abstention. Hits below this cosine similarity are dropped
+  # BEFORE generation. If nothing survives, the model is never called and the
+  # system refuses. 0.0 disables the gate (every question gets context, so the
+  # only thing preventing a plausible-sounding answer is the prompt).
+  # Calibrate with: python scripts/calibrate_floor.py
+  #
+  # 0.75 sits inside the separating window measured on the real handbook, where
+  # the lowest in-corpus question scores 0.7698 and the highest out-of-corpus
+  # one scores 0.7449. That window is only 0.0249 wide, so this is a real gate
+  # rather than a comfortable one. A legitimate question that happens to score
+  # 0.74 will be refused. Re-run the calibration after any change to chunking,
+  # k, or the embedding model, and widen the question set before trusting the
+  # margin further.
+  score_floor: 0.75
 
 # ---- Vector store (S4) -----------------------------------------------------
 # Accessed only through the VectorStore protocol in heinzy/retrieval/store.py
@@ -37,14 +50,59 @@ vector_store:
 
 # ---- Generation model (S3) -------------------------------------------------
 # Recorded for reproducibility + stamped into eval output. The model is served
-# on ONE shared Ollama host (see docker-compose.ollama.yml); teammates only set
-# MODEL_ENDPOINT. Retrieval does not call this. Prefer gemma2:9b on 8GB VRAM;
-# use gemma2:12b only if the shared host can hold it.
+# on the shared Ollama host; teammates only set MODEL_ENDPOINT. Retrieval does
+# not call this.
 model:
-  tag: "gemma2:9b"            # must match `ollama pull` on the shared host
+  tag: "gemma3:12b"           # Ollama "Gemma 12B" = gemma3:12b (gemma2 has no 12b)
   quantization: "Q4_K_M"      # Ollama default quant for these tags
   endpoint: "${MODEL_ENDPOINT}"   # filled from env, never committed
 
+# ---- Grounded answering / abstention -----------------------------------------
+# "Answer only from retrieved chunks, otherwise say you can't." Two layers:
+#   1. retrieval.score_floor above. Nothing relevant was retrieved, so refuse
+#      without calling the model at all. Deterministic, cannot be talked out of.
+#   2. sentinel below. Context passed the floor but does not actually contain
+#      the answer, so the model itself signals the gap in a checkable way.
+generation:
+  # Layer 1 of abstention is evaluated by a policy engine rather than by an
+  # inline condition, so the decision can be audited alongside every other
+  # governed action (#11).
+  #   builtin  deterministic count check, no extra dependency, always available
+  #   agt      Microsoft Agent Governance Toolkit, registers the same condition
+  #            as a PolicyRule and records allow/deny in the kernel audit log.
+  #            Needs `pip install -e ".[governance]"`.
+  # Requesting agt without the extra installed DENIES rather than falling back
+  # to builtin. A safety gate that silently downgrades when its dependency is
+  # missing still looks governed while enforcing nothing.
+  policy:
+    engine: "builtin"
+    agent_id: "heinzy-advisor"
+
+  # Sampling. Ollama defaults to temperature 0.8, which made the same question
+  # refuse on one run and answer on the next, and made the config_hash stamped
+  # into every eval result a promise the system could not keep. A governed
+  # assistant that answers differently on a re-ask cannot be audited, and an
+  # eval that does not reproduce is not evidence.
+  temperature: 0.0
+  seed: 0
+  abstain:
+    # Exact token the model is told to emit when the excerpts don't answer the
+    # question. Detected case-insensitively; the user never sees it.
+    sentinel: "INSUFFICIENT_CONTEXT"
+    # Fewer surviving hits than this -> refuse without calling the model.
+    min_hits: 1
+    # What the advisor actually sees on a refusal. Deterministic, so downstream
+    # (eval, event log, UI) can rely on it instead of parsing model prose.
+    refusal_text: >-
+      I can't answer that from the MISM handbook. The handbook sections I can
+      search don't contain the information needed to answer this question.
+      Please check with Heinz College advising staff directly.
+  citations:
+    # Sections cited in the answer must appear in the retrieved set. Violations
+    # are recorded on the Answer as unsupported_citations rather than raising.
+    # The eval harness is what turns them into a failure.
+    require: true
+
 # ---- Prompt versioning -----------------------------------------------------
 prompt:
-  version: "p0"
+  version: "p1"           # p1 = grounded/abstention prompt

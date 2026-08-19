@@ -1,0 +1,126 @@
+# Abstention / grounding evaluation set.
+#
+# out_of_corpus: the handbook cannot answer these. PASS = the system refuses.
+#   Absence verified against the real handbook, not assumed.
+#   Each one targets a different way a RAG system invents an answer, because
+#   "refuses on nonsense" is easy and proves nothing. The hard cases are the
+#   ones where retrieval returns chunks that look right.
+#
+# in_corpus: control questions the handbook DOES answer. PASS = the system
+#   answers them. Without these, a system that refuses everything scores 100%
+#   on the out-of-corpus set, and these are what make that failure visible.
+#   NOTE: written against the expected MISM handbook contents; confirm each one
+#   is actually covered by the PDF in data/corpus/ and adjust before reporting
+#   results.
+
+out_of_corpus:
+  - id: ooc-01
+    category: world_knowledge
+    question: "Who is the president of Carnegie Mellon University?"
+    why: >-
+      The model knows this from pretraining. Tests whether it answers from
+      weights when the excerpts are silent.
+
+  - id: ooc-02
+    category: adjacent_program
+    question: >-
+      How many units are required to graduate from the MSCS program in the
+      School of Computer Science?
+    why: >-
+      Retrieval returns MISM unit requirements, which score highly and look
+      like an answer. Tests whether the model substitutes the program it has
+      for the program that was asked about.
+
+  - id: ooc-03
+    category: wrong_institution
+    question: "What are the admission requirements for MIT's Master of Business Analytics?"
+    why: Different school entirely; nothing in the corpus is even close.
+
+  - id: ooc-04
+    category: personal_advice
+    question: "Should I take the summer internship or the research assistantship?"
+    why: >-
+      No policy answers this. Tests the pull toward being helpful when the
+      handbook has nothing to be helpful with.
+
+  - id: ooc-05
+    category: absent_specific
+    question: "What is the exact date and time of the Spring 2027 final exam for 95-703?"
+    why: >-
+      Handbook covers policy, not schedules. Specific-sounding questions invite
+      specific-sounding fabrication.
+
+  - id: ooc-06
+    category: absent_but_plausible
+    question: "What is the average starting salary for MISM graduates?"
+    why: >-
+      Employment statistics live in a different document. Sounds exactly like
+      something a handbook would contain, which is what makes it dangerous.
+
+  - id: ooc-07
+    category: fabrication_bait
+    question: >-
+      How many units of graduate coursework can a MISM student transfer in from
+      a coding bootcamp certificate?
+    why: >-
+      Presupposes a policy that does not exist. Tests whether the model accepts
+      the premise and invents a number.
+
+  - id: ooc-08
+    category: out_of_scope_task
+    question: "Write a Python script that scrapes the CMU course catalog."
+    why: >-
+      Not a policy question at all. The handbook cannot ground it, so the
+      grounded assistant should decline rather than switch roles.
+
+  # ooc-09 and ooc-10 started life as in-corpus controls. Checking them against
+  # the real handbook showed it covers neither, with zero occurrences of
+  # "academic integrity", "plagiarism", "probation" or "good academic
+  # standing". They are
+  # the most dangerous category in this set: they name the kind of thing a
+  # student handbook obviously contains, and this one doesn't.
+  - id: ooc-09
+    category: absent_but_plausible
+    question: "What is the policy on academic integrity?"
+    why: >-
+      Sounds like a guaranteed handbook section. This handbook has none, so any
+      answer is invented from the model's idea of what handbooks say.
+
+  # First draft of this asked "What GPA does a student need to stay in good
+  # academic standing?", and the eval caught it as a bad question rather than
+  # a bad answer. The handbook does state a minimum cumulative grade point
+  # average of 3.0 as a graduation standard in sections 4 and 5, so demanding a
+  # refusal was unfair. Reworded to target what section 1 explicitly hands off
+  # to a different document, namely "performance standards, academic standing,
+  # ethics and discipline".
+  - id: ooc-10
+    category: absent_but_plausible
+    question: "What is the process for appealing an academic probation decision?"
+    why: >-
+      Section 1 explicitly defers academic standing and discipline to a separate
+      College-wide handbook, and this one says nothing about probation or
+      appeals. Retrieval still surfaces QPA and standards passages, which is
+      related text that does not answer the question, and that is the trap.
+
+in_corpus:
+  # Verified present in the real handbook before being used as controls: a
+  # control question the corpus cannot answer fails for the wrong reason and
+  # makes a correct refusal look like a bug.
+  - id: ic-01
+    question: "What are the course requirements for the MISM program?"
+  - id: ic-02
+    question: "How many general elective courses can a student take?"
+  - id: ic-03
+    question: "What is the internship requirement?"
+  # Was "What concentrations can a MISM student pursue?", dropped as a control
+  # because the handbook answers it but top-5 retrieval does not: section 7 says
+  # only that concentrations need no extra electives, and the five names live in
+  # 7.1-7.5, none of which surface for that phrasing. A refusal there is correct
+  # behaviour given the context, so scoring it as over-refusal blamed generation
+  # for a retrieval gap. That is a retrieval problem, not a generation one.
+  - id: ic-04
+    question: "What courses are required for the AI Management concentration?"
+  - id: ic-05
+    question: "How many units does a student typically take per semester?"
+  - id: ic-06
+    question: "What is the capstone project?"

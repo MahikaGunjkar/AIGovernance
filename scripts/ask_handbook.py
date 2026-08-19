@@ -25,9 +25,13 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--query", default="What are the required courses?")
     ap.add_argument("--k", type=int, default=None)
+    ap.add_argument("--backend", default=None, choices=["memory", "chroma"],
+                    help="override vector_store.backend for this run only")
     args = ap.parse_args()
 
     cfg = load_config()
+    if args.backend is not None:
+        cfg.vector_store.backend = args.backend
     store = ingest_and_populate_store(cfg)
     print(f"\nstore populated: {store.count()} chunks\n")
 
@@ -38,9 +42,18 @@ def main() -> None:
     answer = generator.generate(result.query, result.hits)
 
     print(f"model    : {answer.model_tag}")
-    print(f"question : {answer.query}\n")
-    print(f"answer:\n{answer.text}\n")
-    print("sources:")
+    print(f"question : {answer.query}")
+
+    print(f"\nanswer:\n{answer.text}\n")
+    if answer.refused:
+        print(f"(no answer given, reason {answer.refusal_reason})")
+        if answer.sources:
+            print("closest sections (did not answer the question):")
+    else:
+        if answer.unsupported_citations:
+            print("WARNING: answer cited sections that retrieval did not return: "
+                  f"{', '.join(answer.unsupported_citations)}")
+        print("sources:")
     for h in answer.sources:
         print(f"  - [{h.section_path}] p{h.source_pages}  (score={h.score:.4f})")
 

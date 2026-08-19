@@ -38,6 +38,12 @@ dev = [
 webui = [
     "flask>=3.0,<4",
 ]
+# Policy-engine backend for Layer 1 abstention (#11). Optional on purpose: the
+# builtin engine keeps a plain install working, and this pulls a sizeable
+# dependency tree that most of the team does not need locally.
+governance = [
+    "agent-governance-toolkit[core]>=4.0.0,<5",
+]
 
 [tool.setuptools.packages.find]
 include = ["heinzy*"]

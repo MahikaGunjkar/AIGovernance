@@ -33,9 +33,9 @@ from flask import Flask, jsonify, render_template, request
 # store or model, and so the lazy-build path actually defers that cost.
 
 # Cues that indicate the model declined rather than answered. Kept in sync with
-# the eval harness's abstention detector so "declined" means the same thing
-# everywhere. This is a display heuristic for the UI — NOT a policy engine (see
-# bug ticket on refusal logic).
+# Retained for diagnostics only. "declined" now comes from Answer.refused, which
+# the generator sets when a refusal layer actually fired, so the UI no longer
+# guesses at the model's wording.
 _ABSTAIN_CUES = [
     "cannot", "can't", "not covered", "no information", "not in the",
     "does not contain", "doesn't contain", "unable to", "not provided",
@@ -44,6 +44,15 @@ _ABSTAIN_CUES = [
 
 
 def _looks_declined(text: str) -> bool:
+    """Keyword guess at whether an answer was a refusal.
+
+    No longer decides anything. The API reports Answer.refused, which the
+    generator sets when a refusal layer actually fired, so the UI reads a fact
+    instead of inferring one from prose. Kept because it is still useful for
+    spotting disagreement between what the model wrote and what the system
+    decided, and because a confident fabrication trips none of these cues while
+    a legitimate answer containing "outside" trips one.
+    """
     t = text.lower()
     return any(c in t for c in _ABSTAIN_CUES)
 
@@ -122,7 +131,9 @@ def create_app(engine: _Engine | None = None) -> Flask:
         return jsonify({
             "question": question,
             "answer": answer.text,
-            "declined": _looks_declined(answer.text),
+            # Structured, not inferred. Set by whichever refusal layer fired.
+            "declined": answer.refused,
+            "decline_reason": answer.refusal_reason,
             "model_tag": answer.model_tag,
             "sources": sources,
         })

@@ -26,6 +26,9 @@ class _FakeAnswer:
     text: str
     model_tag: str
     sources: list
+    # Mirrors the real Answer. The UI reports this rather than keyword scanning.
+    refused: bool = False
+    refusal_reason: str | None = None
 
 
 class _FakeRetriever:
@@ -36,7 +39,9 @@ class _FakeRetriever:
 class _FakeGenerator:
     def generate(self, q, hits):
         if "weather" in q.lower():
-            return _FakeAnswer(q, "I cannot answer; not covered by the handbook.", "gemma2:9b", hits)
+            return _FakeAnswer(q, "I cannot answer; not covered by the handbook.",
+                                "gemma2:9b", hits, refused=True,
+                                refusal_reason="model_insufficient_context")
         return _FakeAnswer(q, "MISM students may take up to 4 electives.", "gemma2:9b", hits)
 
 
