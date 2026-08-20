@@ -5,22 +5,6 @@ policy questions from official MISM handbook documents, returns verifiable
 citations, and can run inside a governance layer that constrains what it can
 access and do.
 
-## Status
-
-- ✅ Ingestion — PDF → chunks → embeddings
-- ✅ Retrieval — Chroma or in-memory store
-- ✅ Generation — **Azure AI Foundry / Azure OpenAI**, or local Ollama
-- ✅ Grounded answering + abstention (A3) — answers only from retrieved chunks;
-  refuses when the handbook does not support an answer
-  ([how it works](#grounded-answering--abstention-a3b))
-- ✅ Docker image — builds and runs standalone; generation needs a model endpoint
-- 🟡 Event log — retrieval only, generation not logged yet
-- ⬜ Eval harness
-- ⬜ Governance layer (PEP lives on `feature/governance-policies`; this branch mounts it in Docker)
-
-Details: [Ownership & what's done](#ownership--whats-done).
-
----
 
 ## How to run
 
@@ -160,25 +144,6 @@ highest out-of-corpus score : 0.7449   (ooc-07, an invented transfer policy)
 Separable. Suggested retrieval.score_floor: 0.757  (margin 0.0249)
 ```
 
-Separable, but by 0.0249 across 16 questions. `score_floor` is set to **0.75**,
-inside that window, which makes Layer 1 a live gate rather than a formality. On
-the real handbook it now refuses all ten out-of-corpus questions before the
-model is called at all, and still answers all six controls.
-
-Be clear about what that buys and what it costs. The gain is that refusal no
-longer depends on the model complying with an instruction, and an out-of-corpus
-question never reaches generation. The cost is that the margin is thin. A
-legitimate question scoring 0.74 will be refused, and 16 questions is a small
-sample to place a threshold on. Widen the question set before trusting it
-further, and re-run the calibration after any change to chunking, `k`, or the
-embedding model.
-
-One consequence worth knowing. With the floor live, Layer 1 now catches every
-out-of-corpus question in the set, so Layer 2 never fires during the eval. It
-is still covered by unit tests, and it still matters for the case the floor
-cannot see, which is a question that retrieves genuinely high-scoring chunks
-that happen not to answer it.
-
 The suggested floor is not a number to paste into config. Re-run the calibration
 after any change to chunking, `k`, or the embedding model, and treat a thin
 margin as evidence that the floor should stay loose.
@@ -248,22 +213,6 @@ Real handbook (`mism-student-handbook.pdf`, 14 pages into 28 chunks),
 | `gemma4:e2b` | **10/10** | 6/6 | 0 | 0 |
 | `llama3.2:latest` | **9/10** | 6/6 | 0 | 0 |
 
-`gemma3:12b` is what `config.yaml` declares, so that row describes shipped
-behaviour. It ran with no `MODEL_TAG` override, and every one of its six answers
-carried a citation that resolved against the retrieved set.
-
-The single `llama3.2` miss is `ooc-04`, where it deflects to Career Services
-rather than inventing a policy. Not a refusal, but not the fabrication the
-criterion targets either. `gemma4:e2b` refuses it outright.
-
-Two reported but non-failing signals guard against passing on a technicality.
-
-- **contentless answers**, where a bare citation with no prose is not an answer
-  but is not a refusal either, so it would otherwise score as a success.
-- **answers citing nothing**, where the answer may be perfectly grounded but
-  with no citation to check, the grounding check passed on an empty set. A clean
-  run is not the same as a verified one.
-
 ### Checking the generation host
 
 ```bash
@@ -277,8 +226,6 @@ Exits non-zero when the host is unreachable or misconfigured.
 
 ### Running it in the container
 
-The same eval runs inside the Docker image, which is what makes the result a
-property of the shipped artifact rather than of one laptop.
 
 ```bash
 docker build -t heinzy .
