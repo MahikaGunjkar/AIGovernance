@@ -17,10 +17,6 @@ access and do.
 Retrieval always runs with the app. Only **generation** calls the model.  
 Azure detail + troubleshooting: [`docs/azure.md`](docs/azure.md).
 
-**Note:** Layer 1 abstention and citations work on Azure. Governed **tool**
-calls (web search / write tools behind the interceptor) are Ollama-only until
-Azure tool calling is wired — see [`docs/azure.md`](docs/azure.md#governance-tools-on-azure).
-
 ### 1. Clone, governance worktree, install
 
 ```bash
@@ -69,7 +65,8 @@ AZURE_OPENAI_API_VERSION=2024-10-21
 CHROMA_HOST=127.0.0.1
 ```
 
-Governed tool calls stay off on Azure; handbook chat + abstention still work.
+Same governance mount as Ollama: handbook chat, abstention, and governed tools
+(when the Azure deployment supports function calling).
 
 **Store:** `config.yaml` → `vector_store.backend: memory` (no Docker), or `chroma` plus:
 

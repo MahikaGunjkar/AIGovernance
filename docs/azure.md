@@ -3,12 +3,13 @@
 Generation on **Azure**; app + handbook on your **laptop or VM**.  
 No local GPU required for answers. Local Ollama path: [`README.md`](../README.md).
 
-Layer 1 abstention (`builtin` / `agt`) and citations work the same as Ollama.
-**Governed tool calls do not:** Azure is chat-only until tool calling is wired
-(see [Governance tools on Azure](#governance-tools-on-azure) below).
+Handbook RAG, Layer 1/2 abstention, citations, and **governed tool calls**
+(when `GOVERNANCE_*` is set) all work with `MODEL_PROVIDER=azure_openai`.
+The deployment must support OpenAI-style function calling.
 
-Verify with `python scripts/check_model_host.py` and a real ask — unit tests
-force `MODEL_PROVIDER=ollama` and do not exercise Azure.
+Most unit tests force Ollama so a local Azure `.env` does not break stubs;
+Azure-specific coverage is in `tests/test_azure_generation.py`. Verify a live
+host with `python scripts/check_model_host.py` and a real ask.
 
 ---
 
@@ -69,26 +70,19 @@ On a VM, tunnel if needed:
 
 ## Governance tools on Azure
 
-What already works with `MODEL_PROVIDER=azure_openai`:
+With the governance worktree mounted, `Generator` enters the same tool loop used
+for Ollama: OpenAI-format `tools` from `heinzy/tools/registry.py`, every call
+gated by `OllamaGovernanceInterceptor` before execution.
 
-- Handbook RAG + grounded answers
-- Layer 1 refusal (score floor / policy engine) and Layer 2 sentinel abstention
-- Citation checks
+| Capability | Azure |
+|------------|--------|
+| Handbook RAG + grounded answers | Yes |
+| Layer 1 / Layer 2 abstention + citations | Yes |
+| Governed `web_search` / write tools / approval pauses | Yes (function-calling deployment) |
 
-What does **not** yet:
-
-- The Ollama tool-calling loop gated by `OllamaGovernanceInterceptor`
-  (`web_search`, write tools, human-approval pauses)
-
-`Generator.use_tools` stays off for Azure on purpose. Setting `GOVERNANCE_*`
-still mounts policy for Layer 1 `agt` if you use that engine; it does not
-enable tool calls. For governed tools today, use `MODEL_PROVIDER=ollama`.
-
-Wiring tools on Azure is moderate work (not a config flip): pass OpenAI-format
-`tools` (already in `heinzy/tools/registry.py`), map Azure `tool_calls` /
-`role=tool` messages into the existing loop in `_chat_azure`, then allow
-`use_tools` when `governance_available()`. Most models on Foundry that support
-function calling can use the same path.
+If tools never fire: confirm `GOVERNANCE_SRC` / `GOVERNANCE_POLICY_PATH`, that
+`governance.enabled` is true in `config.yaml`, and that the Azure deployment
+supports function calling (not every Foundry model does).
 
 ---
 
@@ -100,5 +94,5 @@ function calling can use the same path.
 | `401` | Wrong key / wrong resource; or key pasted twice (~160 chars) |
 | `DeploymentNotFound` | Use the **model deployment** name, not the resource create id |
 | `no_retrieved_context` | In-handbook question; try including **MISM** |
-| Governance tools never fire | Expected on Azure today — use Ollama, or wait for tool wiring above |
+| Governance tools never fire | Worktree + `GOVERNANCE_*`; deployment must support function calling |
 | Layer 1 `agt` / worktree issues | Confirm worktree + `GOVERNANCE_SRC` / `GOVERNANCE_POLICY_PATH` |

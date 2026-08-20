@@ -38,15 +38,14 @@ A refusal returns the configured refusal_text, not model prose, so downstream
 matching on English.
 
 When governance is available (heinzy/tools mount present and not disabled in
-config), generate() enters a tool-calling loop on Ollama. Every tool_call is
-gated by run_governed_tool before the tool runs.
+config), generate() enters a tool-calling loop. Every tool_call is gated by
+run_governed_tool before the tool runs. Works for both Ollama and Azure
+(OpenAI-format tools; Azure responses are normalized to the shared loop shape).
 
 Generation providers (MODEL_PROVIDER env, default "ollama"):
   - ollama: POST {MODEL_ENDPOINT}/api/chat (local or LAN GPU host).
   - azure_openai: Azure OpenAI / AI Foundry Chat Completions. Set
     AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT.
-    Tool-calling / governance tool loop is disabled for this provider
-    (chat + abstention only; see docs/azure.md).
 """
 from __future__ import annotations
 
@@ -219,14 +218,12 @@ class Generator:
                 self.model_tag = self.azure_deployment
             self.endpoint = self.azure_endpoint or raw_azure
 
-        # Tool loop is enabled only when the governance mount is present and
-        # config does not disable it. Azure path is chat-only for now.
+        # Tool loop when the governance mount is present and config does not
+        # disable it. Ollama and Azure both speak OpenAI-style tool schemas.
         gov = getattr(cfg, "governance", None)
         self._governance_cfg = gov
         enabled = True if gov is None else bool(getattr(gov, "enabled", True))
-        self.use_tools = bool(
-            enabled and governance_available() and self.provider == "ollama"
-        )
+        self.use_tools = bool(enabled and governance_available())
         self.max_tool_rounds = int(getattr(gov, "max_tool_rounds", 3) if gov else 3)
         self.agent_id = str(getattr(gov, "agent_id", "heinzy-advisor") if gov else "heinzy-advisor")
 
@@ -295,17 +292,8 @@ class Generator:
     def _chat_azure(
         self, messages: list[dict[str, Any]], *, tools: list[dict] | None
     ) -> dict[str, Any]:
-        """Azure OpenAI / AI Foundry Chat Completions → Ollama-shaped response."""
-        if tools:
-            raise NotImplementedError(
-                "Azure OpenAI tool calling is not wired yet. "
-                "Unset governance tools or use MODEL_PROVIDER=ollama."
-            )
-        clean_messages = [
-            {"role": m["role"], "content": m.get("content") or ""}
-            for m in messages
-            if m.get("role") in ("system", "user", "assistant")
-        ]
+        """Azure OpenAI / AI Foundry Chat Completions → shared message shape."""
+        clean_messages = self._messages_for_azure(messages)
         headers = {
             "api-key": self.azure_api_key,
             "Content-Type": "application/json",
@@ -327,6 +315,8 @@ class Generator:
                 "messages": clean_messages,
                 "temperature": self.temperature,
             }
+        if tools:
+            payload["tools"] = tools
         resp = requests.post(
             url,
             json=payload,
@@ -341,20 +331,79 @@ class Generator:
             )
         data = resp.json()
         try:
-            content = data["choices"][0]["message"]["content"] or ""
+            choice_msg = data["choices"][0]["message"]
         except (KeyError, IndexError, TypeError) as exc:
             raise RuntimeError(
                 f"Unexpected Azure OpenAI response shape: {data!r}"
             ) from exc
-        # Normalize so generate() / tool loop keep reading data["message"]["content"].
-        return {"message": {"content": content}, "raw": data}
+        # Normalize so generate() / tool loop keep reading data["message"].
+        content = choice_msg.get("content")
+        message: dict[str, Any] = {
+            "role": "assistant",
+            "content": content if content is not None else "",
+        }
+        tool_calls = choice_msg.get("tool_calls") or []
+        if tool_calls:
+            message["tool_calls"] = tool_calls
+        return {"message": message, "raw": data}
+
+    @staticmethod
+    def _messages_for_azure(messages: list[dict[str, Any]]) -> list[dict[str, Any]]:
+        """Map the shared tool-loop message list to Azure/OpenAI Chat Completions."""
+        out: list[dict[str, Any]] = []
+        for m in messages:
+            role = m.get("role")
+            if role in ("system", "user"):
+                out.append({"role": role, "content": m.get("content") or ""})
+                continue
+            if role == "assistant":
+                msg: dict[str, Any] = {
+                    "role": "assistant",
+                    "content": m.get("content") if m.get("content") is not None else "",
+                }
+                raw_tcs = m.get("tool_calls") or []
+                if raw_tcs:
+                    azure_tcs: list[dict[str, Any]] = []
+                    for i, tc in enumerate(raw_tcs):
+                        fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
+                        name = fn.get("name") or tc.get("name") or ""
+                        args = fn.get("arguments", tc.get("arguments", {}))
+                        if isinstance(args, dict):
+                            args = json.dumps(args)
+                        elif args is None:
+                            args = "{}"
+                        else:
+                            args = str(args)
+                        tc_id = tc.get("id") or f"call_{i}"
+                        azure_tcs.append(
+                            {
+                                "id": tc_id,
+                                "type": "function",
+                                "function": {"name": name, "arguments": args},
+                            }
+                        )
+                    msg["tool_calls"] = azure_tcs
+                    if not msg["content"]:
+                        msg["content"] = None
+                out.append(msg)
+                continue
+            if role == "tool":
+                tool_call_id = m.get("tool_call_id") or m.get("id") or "call_unknown"
+                out.append(
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": m.get("content") or "",
+                    }
+                )
+        return out
 
     @staticmethod
     def _tool_calls_from_message(message: dict[str, Any]) -> list[dict[str, Any]]:
-        """Normalize Ollama tool_calls (name/arguments may be nested under 'function')."""
+        """Normalize Ollama/OpenAI tool_calls (name/arguments may be nested under 'function')."""
         raw = message.get("tool_calls") or []
         out: list[dict[str, Any]] = []
-        for tc in raw:
+        for i, tc in enumerate(raw):
             fn = tc.get("function") if isinstance(tc.get("function"), dict) else {}
             name = fn.get("name") or tc.get("name") or ""
             args = fn.get("arguments", tc.get("arguments", {}))
@@ -365,7 +414,8 @@ class Generator:
                     args = {"raw": args}
             if not isinstance(args, dict):
                 args = {"value": args}
-            out.append({"name": name, "arguments": args, "raw": tc})
+            tc_id = tc.get("id") or f"call_{i}"
+            out.append({"name": name, "arguments": args, "id": tc_id, "raw": tc})
         return out
 
     # ------------------------------------------------------------------ #
@@ -432,7 +482,7 @@ class Generator:
     def _generate_with_tools(
         self, query: str, user_prompt: str, hits: list[ScoredChunk]
     ) -> tuple[str, list[dict[str, Any]], Answer | None]:
-        """Run the Ollama tool-calling loop.
+        """Run the provider-agnostic tool-calling loop (Ollama or Azure).
 
         Returns (raw_text, tool_events, paused_answer). paused_answer is non-None
         only when a tool call paused for human approval, in which case the caller
@@ -456,6 +506,7 @@ class Generator:
             for tc in tool_calls:
                 name = tc["name"]
                 args = tc["arguments"]
+                tool_call_id = tc["id"]
                 try:
                     result = run_governed_tool(
                         name, args, query=query, agent_id=self.agent_id
@@ -467,6 +518,7 @@ class Generator:
                     messages.append(
                         {
                             "role": "tool",
+                            "tool_call_id": tool_call_id,
                             "content": json.dumps({"status": "DENIED", "error": str(exc)}),
                         }
                     )
@@ -493,7 +545,11 @@ class Generator:
                     {"tool": name, "args": args, "status": "SUCCESS", "result": result}
                 )
                 messages.append(
-                    {"role": "tool", "content": json.dumps(result)},
+                    {
+                        "role": "tool",
+                        "tool_call_id": tool_call_id,
+                        "content": json.dumps(result),
+                    },
                 )
 
         # Exhausted rounds — ask once more without tools for a final answer.
