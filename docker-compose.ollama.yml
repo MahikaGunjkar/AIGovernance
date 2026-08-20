@@ -1,20 +1,16 @@
-# Optional LAN Gemma/Ollama host (Infra task S3 fallback).
+# Optional local/LAN Ollama host.
 #
-# Primary shared host is Google Colab + ngrok (issue #16):
-#   notebooks/colab_gemma_ollama_host.ipynb  →  gemma3:12b
-#   docs/colab_gemma_host.md
+# Prefer Azure AI Foundry for shared generation on CPU-only machines
+# (see azurereadme.md and README.md). Use this compose file when you have a
+# GPU box and want MODEL_PROVIDER=ollama.
 #
-# Use this compose file only for a persistent local/LAN GPU box. Teammates then
-# set MODEL_ENDPOINT=http://<this-host>:11434 (not the Colab HTTPS URL).
-#
-# Operator (on the LAN host):
+# Operator:
 #   docker compose -f docker-compose.ollama.yml up -d
 #   docker compose -f docker-compose.ollama.yml exec ollama ollama pull gemma3:12b
-#   # smaller card: gemma2:9b. Note gemma2:12b does not exist, a 12B Gemma is
-#   # gemma3:12b.
 #
-# Smoke from another machine:
-#   curl http://<host>:11434/api/tags
+# Clients:
+#   MODEL_PROVIDER=ollama
+#   MODEL_ENDPOINT=http://<this-host>:11434
 #
 # GPU: requires NVIDIA drivers + Docker GPU support. If the host has no GPU,
 # delete the `gpus:` line; Ollama will run on CPU (much slower).
@@ -26,7 +22,6 @@ services:
     ports:
       - "11434:11434"
     environment:
-      # Bind all interfaces so LAN / VPN teammates can connect.
       OLLAMA_HOST: "0.0.0.0:11434"
     volumes:
       - ollama_data:/root/.ollama
