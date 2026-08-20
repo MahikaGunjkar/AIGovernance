@@ -11,7 +11,7 @@ invariant: reads endpoint/tag from config + env, never hardcoded
 
 Run from repo root:
     python scripts/check_model_host.py
-    MODEL_ENDPOINT=https://abc123.ngrok.app python scripts/check_model_host.py
+    MODEL_ENDPOINT=http://localhost:11434 python scripts/check_model_host.py
 """
 from __future__ import annotations
 
@@ -34,9 +34,9 @@ def _check_ollama(gen: Generator) -> int:
         resp.raise_for_status()
     except requests.RequestException as exc:
         print(f"\nUNREACHABLE. {type(exc).__name__} talking to {gen.endpoint}")
-        print("If the host runs on Colab the tunnel URL changes on every restart, "
-              "so check the current URL with whoever owns the host and update "
-              "MODEL_ENDPOINT in your .env.")
+        print("Check that Ollama is running and MODEL_ENDPOINT in .env matches "
+              "(default http://localhost:11434). For LAN/Docker hosts, use that "
+              "machine's URL and confirm the port is reachable.")
         return 2
 
     tags = [m.get("name", "") for m in resp.json().get("models", [])]

@@ -38,14 +38,15 @@ A refusal returns the configured refusal_text, not model prose, so downstream
 matching on English.
 
 When governance is available (heinzy/tools mount present and not disabled in
-config), generate() enters an Ollama tool-calling loop. Every tool_call is gated
-by run_governed_tool before the tool runs.
+config), generate() enters a tool-calling loop on Ollama. Every tool_call is
+gated by run_governed_tool before the tool runs.
 
 Generation providers (MODEL_PROVIDER env, default "ollama"):
-  - ollama: POST {MODEL_ENDPOINT}/api/chat (local, Colab tunnel, or GPU host).
-  - azure_openai: Azure OpenAI Chat Completions. Set AZURE_OPENAI_ENDPOINT,
-    AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT. Tool-calling / governance
-    tool loop is disabled for this provider (chat-only first milestone).
+  - ollama: POST {MODEL_ENDPOINT}/api/chat (local or LAN GPU host).
+  - azure_openai: Azure OpenAI / AI Foundry Chat Completions. Set
+    AZURE_OPENAI_ENDPOINT, AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT.
+    Tool-calling / governance tool loop is disabled for this provider
+    (chat + abstention only; see docs/azure.md).
 """
 from __future__ import annotations
 

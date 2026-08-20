@@ -1,7 +1,7 @@
 # Optional local/LAN Ollama host.
 #
 # Prefer Azure AI Foundry for shared generation on CPU-only machines
-# (see azurereadme.md and README.md). Use this compose file when you have a
+# (see docs/azure.md and README.md). Use this compose file when you have a
 # GPU box and want MODEL_PROVIDER=ollama.
 #
 # Operator:

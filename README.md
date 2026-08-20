@@ -15,7 +15,11 @@ access and do.
 | VM + Azure | Linux VM | Azure AI Foundry / OpenAI |
 
 Retrieval always runs with the app. Only **generation** calls the model.  
-Azure detail + troubleshooting: [`azurereadme.md`](azurereadme.md).
+Azure detail + troubleshooting: [`docs/azure.md`](docs/azure.md).
+
+**Note:** Layer 1 abstention and citations work on Azure. Governed **tool**
+calls (web search / write tools behind the interceptor) are Ollama-only until
+Azure tool calling is wired — see [`docs/azure.md`](docs/azure.md#governance-tools-on-azure).
 
 ### 1. Clone, governance worktree, install
 
@@ -29,7 +33,7 @@ python -m venv .venv
 # Windows: .\.venv\Scripts\Activate.ps1
 # macOS/Linux: source .venv/bin/activate
 
-pip install -e ".[store,dev,governance]"
+pip install -e ".[store,dev,governance,webui]"
 cp .env.template .env
 mkdir -p data/corpus    # put the handbook PDF here
 ```
@@ -54,7 +58,7 @@ MODEL_PROVIDER=ollama
 MODEL_ENDPOINT=http://localhost:11434
 ```
 
-**Azure (laptop or VM):** in `.env`:
+**Azure (laptop or VM):** in `.env` (full steps: [`docs/azure.md`](docs/azure.md)):
 
 ```
 MODEL_PROVIDER=azure_openai
@@ -64,6 +68,8 @@ AZURE_OPENAI_API_KEY=YOUR_KEY
 AZURE_OPENAI_API_VERSION=2024-10-21
 CHROMA_HOST=127.0.0.1
 ```
+
+Governed tool calls stay off on Azure; handbook chat + abstention still work.
 
 **Store:** `config.yaml` → `vector_store.backend: memory` (no Docker), or `chroma` plus:
 
@@ -88,8 +94,9 @@ pip install -e ".[webui]"
 python -m heinzy.webui.app
 ```
 
-Uses the same `.env` / store / model as the CLI. First load may ingest the PDF.
-Optional Docker UI: `docker compose -f docker-compose.webui.yml up --build`.
+Uses the same `.env` / store / model as the CLI (Ollama or Azure). First load
+may ingest the PDF. Optional Docker UI (passes Azure env from `.env` too):
+`docker compose -f docker-compose.webui.yml up --build`.
 
 ```bash
 # optional checks
@@ -230,7 +237,7 @@ python scripts/check_model_host.py
 ```
 
 - **Ollama:** checks `MODEL_ENDPOINT` and that `model.tag` / `MODEL_TAG` is listed.
-- **Azure:** checks Foundry/OpenAI credentials and deployment (see `azurereadme.md`).
+- **Azure:** checks Foundry/OpenAI credentials and deployment (see `docs/azure.md`).
 
 Exits non-zero when the host is unreachable or misconfigured.
 
@@ -329,4 +336,4 @@ Copy `.env.template` to `.env` and fill values. Never commit `.env`.
 Retrieval smoke tests do not need a live model. Generation does — run
 `python scripts/check_model_host.py` before `ask` / `chat`.
 
-Details for Azure: [`azurereadme.md`](azurereadme.md).
+Details for Azure: [`docs/azure.md`](docs/azure.md).

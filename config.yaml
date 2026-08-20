@@ -50,7 +50,7 @@ vector_store:
 
 # ---- Generation model (S3) -------------------------------------------------
 # Recorded for reproducibility + stamped into eval output. Provider is chosen
-# with MODEL_PROVIDER in .env (ollama | azure_openai) — see azurereadme.md.
+# with MODEL_PROVIDER in .env (ollama | azure_openai) — see docs/azure.md.
 # Retrieval does not call this endpoint.
 model:
   tag: "gemma3:12b"           # Ollama tag; with Azure, stamp via AZURE_OPENAI_DEPLOYMENT / MODEL_TAG

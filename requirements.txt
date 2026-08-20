@@ -10,11 +10,15 @@ tiktoken==0.13.0
 # and stored vectors are guaranteed to come from the same library/model.
 fastembed==0.8.0
 
-# Generation: calls Ollama's HTTP API.
+# Generation: Ollama and/or Azure OpenAI / AI Foundry over HTTP.
 requests==2.34.2
+
+# Web UI (heinzy/webui). Prefer: pip install -e ".[webui]"
+flask==3.0.3
 
 # --- Optional, Chroma HTTP thin client for shared vector store (S4):
 # chromadb-client==1.5.9
 # Or: pip install -e ".[store]"
 # (Use thin client — full `chromadb` needs MSVC build tools on Windows.)
+
 
