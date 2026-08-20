@@ -56,9 +56,10 @@ vector_store:
 # on the shared Ollama host; teammates only set MODEL_ENDPOINT. Retrieval does
 # not call this.
 model:
-  tag: "gemma3:12b"           # Ollama "Gemma 12B" = gemma3:12b (gemma2 has no 12b)
-  quantization: "Q4_K_M"      # Ollama default quant for these tags
-  endpoint: "${MODEL_ENDPOINT}"   # filled from env, never committed
+  tag: "gemma3:12b"           # Ollama tag; with Azure, override via AZURE_OPENAI_DEPLOYMENT / MODEL_TAG
+  quantization: "Q4_K_M"      # Ollama default quant for these tags (ignored for azure_openai)
+  endpoint: "${MODEL_ENDPOINT}"   # Ollama only; Azure uses AZURE_OPENAI_ENDPOINT
+  # Provider is env-only (MODEL_PROVIDER=ollama|azure_openai) so secrets stay out of this file.
 
 # ---- Grounded answering / abstention -----------------------------------------
 # "Answer only from retrieved chunks, otherwise say you can't." Two layers:

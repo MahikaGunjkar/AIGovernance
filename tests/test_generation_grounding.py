@@ -65,7 +65,7 @@ def stub_model(monkeypatch):
     calls: dict = {"count": 0, "payload": None, "auth": None}
 
     def _install(content: str):
-        def fake_post(url, json=None, timeout=None, auth=None):
+        def fake_post(url, json=None, timeout=None, auth=None, headers=None, **kwargs):
             calls["count"] += 1
             calls["payload"] = json
             calls["auth"] = auth

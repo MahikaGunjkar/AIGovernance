@@ -41,9 +41,11 @@ When governance is available (heinzy/tools mount present and not disabled in
 config), generate() enters an Ollama tool-calling loop. Every tool_call is gated
 by run_governed_tool before the tool runs.
 
-Talks to Ollama's /api/chat. endpoint comes from config.model.endpoint (itself
-sourced from MODEL_ENDPOINT in .env); if that resolves empty, falls back to the
-local Ollama default so this runs on a dev machine that already has Ollama up.
+Generation providers (MODEL_PROVIDER env, default "ollama"):
+  - ollama: POST {MODEL_ENDPOINT}/api/chat (local, Colab tunnel, or GPU host).
+  - azure_openai: Azure OpenAI Chat Completions. Set AZURE_OPENAI_ENDPOINT,
+    AZURE_OPENAI_API_KEY, AZURE_OPENAI_DEPLOYMENT. Tool-calling / governance
+    tool loop is disabled for this provider (chat-only first milestone).
 """
 from __future__ import annotations
 
@@ -62,6 +64,8 @@ from heinzy.retrieval.store import ScoredChunk
 from heinzy.tools.registry import TOOL_DEFINITIONS, run_governed_tool
 
 _DEFAULT_ENDPOINT = "http://localhost:11434"
+_DEFAULT_PROVIDER = "ollama"
+_DEFAULT_AZURE_API_VERSION = "2024-10-21"
 _DEFAULT_SENTINEL = "INSUFFICIENT_CONTEXT"
 _DEFAULT_REFUSAL = (
     "I can't answer that from the MISM handbook. The handbook sections I can "
@@ -158,6 +162,7 @@ class Answer:
 
 class Generator:
     def __init__(self, cfg) -> None:
+        self.provider = (os.environ.get("MODEL_PROVIDER") or _DEFAULT_PROVIDER).strip().lower()
         self.model_tag = os.environ.get("MODEL_TAG") or cfg.model.tag
         self.endpoint = (getattr(cfg.model, "endpoint", "") or _DEFAULT_ENDPOINT).rstrip("/")
 
@@ -166,12 +171,61 @@ class Generator:
         # environment and never from config, which is committed.
         self.auth = _basic_auth_from_env()
 
+        # Azure OpenAI / Azure AI Foundry (MODEL_PROVIDER=azure_openai).
+        # Secrets stay in env. Supports:
+        #   classic: https://{resource}.openai.azure.com + deployments/{name}/...
+        #   Foundry v1: https://{resource}.services.ai.azure.com/openai/v1/chat/completions
+        #               with {"model": deployment} in the body
+        raw_azure = (os.environ.get("AZURE_OPENAI_ENDPOINT") or "").strip().rstrip("/")
+        if raw_azure.endswith("/chat/completions"):
+            raw_azure = raw_azure[: -len("/chat/completions")].rstrip("/")
+        self.azure_endpoint = raw_azure
+        self.azure_api_key = (os.environ.get("AZURE_OPENAI_API_KEY") or "").strip()
+        self.azure_deployment = (
+            os.environ.get("AZURE_OPENAI_DEPLOYMENT")
+            or os.environ.get("MODEL_TAG")
+            or ""
+        ).strip()
+        self.azure_api_version = (
+            os.environ.get("AZURE_OPENAI_API_VERSION") or _DEFAULT_AZURE_API_VERSION
+        ).strip()
+        # Foundry / AI Services v1 chat URL (model name goes in the JSON body).
+        self.azure_v1_chat_url: str | None = None
+        if raw_azure:
+            if raw_azure.endswith("/openai/v1"):
+                self.azure_v1_chat_url = f"{raw_azure}/chat/completions"
+                self.azure_endpoint = raw_azure[: -len("/openai/v1")].rstrip("/")
+            elif "services.ai.azure.com" in raw_azure:
+                self.azure_v1_chat_url = (
+                    f"{raw_azure}/openai/v1/chat/completions"
+                )
+        if self.provider == "azure_openai":
+            missing = [
+                name
+                for name, val in (
+                    ("AZURE_OPENAI_ENDPOINT", self.azure_endpoint or raw_azure),
+                    ("AZURE_OPENAI_API_KEY", self.azure_api_key),
+                    ("AZURE_OPENAI_DEPLOYMENT", self.azure_deployment),
+                )
+                if not val
+            ]
+            if missing:
+                raise ValueError(
+                    "MODEL_PROVIDER=azure_openai requires: " + ", ".join(missing)
+                )
+            # Stamp answers with the deployment name unless MODEL_TAG overrides.
+            if not os.environ.get("MODEL_TAG"):
+                self.model_tag = self.azure_deployment
+            self.endpoint = self.azure_endpoint or raw_azure
+
         # Tool loop is enabled only when the governance mount is present and
-        # config does not disable it.
+        # config does not disable it. Azure path is chat-only for now.
         gov = getattr(cfg, "governance", None)
         self._governance_cfg = gov
         enabled = True if gov is None else bool(getattr(gov, "enabled", True))
-        self.use_tools = bool(enabled and governance_available())
+        self.use_tools = bool(
+            enabled and governance_available() and self.provider == "ollama"
+        )
         self.max_tool_rounds = int(getattr(gov, "max_tool_rounds", 3) if gov else 3)
         self.agent_id = str(getattr(gov, "agent_id", "heinzy-advisor") if gov else "heinzy-advisor")
 
@@ -207,6 +261,18 @@ class Generator:
     # HTTP
     # ------------------------------------------------------------------ #
     def _chat(self, messages: list[dict[str, Any]], *, tools: list[dict] | None) -> dict[str, Any]:
+        if self.provider == "azure_openai":
+            return self._chat_azure(messages, tools=tools)
+        if self.provider != "ollama":
+            raise ValueError(
+                f"Unknown MODEL_PROVIDER={self.provider!r}. "
+                "Supported: ollama, azure_openai."
+            )
+        return self._chat_ollama(messages, tools=tools)
+
+    def _chat_ollama(
+        self, messages: list[dict[str, Any]], *, tools: list[dict] | None
+    ) -> dict[str, Any]:
         payload: dict[str, Any] = {
             "model": self.model_tag,
             "messages": messages,
@@ -224,6 +290,63 @@ class Generator:
         )
         resp.raise_for_status()
         return resp.json()
+
+    def _chat_azure(
+        self, messages: list[dict[str, Any]], *, tools: list[dict] | None
+    ) -> dict[str, Any]:
+        """Azure OpenAI / AI Foundry Chat Completions → Ollama-shaped response."""
+        if tools:
+            raise NotImplementedError(
+                "Azure OpenAI tool calling is not wired yet. "
+                "Unset governance tools or use MODEL_PROVIDER=ollama."
+            )
+        clean_messages = [
+            {"role": m["role"], "content": m.get("content") or ""}
+            for m in messages
+            if m.get("role") in ("system", "user", "assistant")
+        ]
+        headers = {
+            "api-key": self.azure_api_key,
+            "Content-Type": "application/json",
+        }
+        if self.azure_v1_chat_url:
+            # Azure AI Foundry / AI Services: model name in body, no deployment path.
+            url = self.azure_v1_chat_url
+            payload: dict[str, Any] = {
+                "model": self.azure_deployment,
+                "messages": clean_messages,
+                "temperature": self.temperature,
+            }
+        else:
+            url = (
+                f"{self.azure_endpoint}/openai/deployments/{self.azure_deployment}"
+                f"/chat/completions?api-version={self.azure_api_version}"
+            )
+            payload = {
+                "messages": clean_messages,
+                "temperature": self.temperature,
+            }
+        resp = requests.post(
+            url,
+            json=payload,
+            headers=headers,
+            timeout=180,
+        )
+        if resp.status_code >= 400:
+            # Surface Azure's message; bare HTTPError hides DeploymentNotFound detail.
+            detail = (resp.text or "")[:500]
+            raise requests.HTTPError(
+                f"{resp.status_code} for {url}: {detail}", response=resp
+            )
+        data = resp.json()
+        try:
+            content = data["choices"][0]["message"]["content"] or ""
+        except (KeyError, IndexError, TypeError) as exc:
+            raise RuntimeError(
+                f"Unexpected Azure OpenAI response shape: {data!r}"
+            ) from exc
+        # Normalize so generate() / tool loop keep reading data["message"]["content"].
+        return {"message": {"content": content}, "raw": data}
 
     @staticmethod
     def _tool_calls_from_message(message: dict[str, Any]) -> list[dict[str, Any]]:
