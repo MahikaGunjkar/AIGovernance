@@ -24,81 +24,53 @@ Details: [Ownership & what's done](#ownership--whats-done).
 
 ## How to run
 
-Two supported ways to get answers:
+| Mode | App runs on | LLM runs on |
+|------|-------------|-------------|
+| Local + Ollama | Laptop | Local Ollama |
+| Local + Azure | Laptop | Azure AI Foundry / OpenAI |
+| VM + Azure | Linux VM | Azure AI Foundry / OpenAI |
 
-| Mode | Where the app runs | Where the LLM runs | Docs |
-|------|--------------------|--------------------|------|
-| **Local** | Your laptop | Local Ollama **or** Azure | below |
-| **Azure generation** | Laptop or VM | Azure AI Foundry / OpenAI only | below + [`azurereadme.md`](azurereadme.md) |
+Retrieval always runs with the app. Only **generation** calls the model.  
+Azure detail + troubleshooting: [`azurereadme.md`](azurereadme.md).
 
-Retrieval (PDF → embeddings → Chroma/memory) always runs with the app. Only
-**generation** calls the model host.
-
-### 1. Clone and install
+### 1. Clone, governance worktree, install
 
 ```bash
-git clone <this-repo> && cd AIGovernance   # or your checkout name
-python -m venv .venv
+git clone <this-repo> && cd AIGovernance
 
-# Windows PowerShell
-.\.venv\Scripts\Activate.ps1
-# macOS / Linux
-source .venv/bin/activate
+# Governance PEP (separate branch — mount at runtime; do not merge it here)
+git worktree add ../AIGovernance-governance feature/governance-policies
+
+python -m venv .venv
+# Windows: .\.venv\Scripts\Activate.ps1
+# macOS/Linux: source .venv/bin/activate
 
 pip install -e ".[store,dev,governance]"
 cp .env.template .env
+mkdir -p data/corpus    # put the handbook PDF here
 ```
 
-Put the handbook PDF in `data/corpus/` (create the folder if needed).
+In `.env`, point at the worktree (paths relative to the repo root):
 
-### 2a. Local — Ollama on this machine
-
-1. Install and start [Ollama](https://ollama.com/), then:
-
-```bash
-ollama pull gemma3:12b    # or a smaller tag for CPU-only machines
+```
+GOVERNANCE_SRC=../AIGovernance-governance/src
+GOVERNANCE_POLICY_PATH=../AIGovernance-governance/policies/governance_policy.yaml
+GOVERNANCE_HOST_PATH=../AIGovernance-governance
 ```
 
-2. In `.env`:
+Skip the worktree only if you do not need the tool-governance PEP (chat still
+works; tool calls stay off).
+
+### 2. Choose generation + store
+
+**Ollama (local):** install [Ollama](https://ollama.com/), `ollama pull gemma3:12b`, then in `.env`:
 
 ```
 MODEL_PROVIDER=ollama
 MODEL_ENDPOINT=http://localhost:11434
 ```
 
-3. In `config.yaml`, for a no-Docker trial:
-
-```yaml
-vector_store:
-  backend: "memory"
-```
-
-Or use Chroma (persistent):
-
-```bash
-# config.yaml → vector_store.backend: chroma
-# .env → CHROMA_HOST=127.0.0.1
-docker compose -f docker-compose.chroma.yml up -d
-```
-
-4. Run:
-
-```bash
-python scripts/check_model_host.py
-python scripts/ask_handbook.py --query "What does the MISM curriculum cover?"
-python scripts/chat.py
-```
-
-Optional GPU/LAN Ollama box: [`docker-compose.ollama.yml`](docker-compose.ollama.yml)
-and set `MODEL_ENDPOINT=http://<that-host>:11434`.
-
-### 2b. Local app + Azure for generation (recommended for CPU-only)
-
-App and handbook stay on your machine; answers come from Azure AI Foundry.
-
-1. Create a Foundry / Azure OpenAI chat deployment and copy endpoint, deployment
-   name, and **API key from that same resource**.
-2. In `.env`:
+**Azure (laptop or VM):** in `.env`:
 
 ```
 MODEL_PROVIDER=azure_openai
@@ -109,8 +81,15 @@ AZURE_OPENAI_API_VERSION=2024-10-21
 CHROMA_HOST=127.0.0.1
 ```
 
-3. Choose `memory` or Chroma as in 2a.
-4. Run:
+**Store:** `config.yaml` → `vector_store.backend: memory` (no Docker), or `chroma` plus:
+
+```bash
+docker compose -f docker-compose.chroma.yml up -d
+```
+
+On a VM, prefer **chroma + Azure** (not large Ollama on CPU).
+
+### 3. Run
 
 ```bash
 python scripts/check_model_host.py
@@ -118,78 +97,18 @@ python scripts/ask_handbook.py --query "What does the MISM curriculum cover?"
 python scripts/chat.py
 ```
 
-Full Azure checklist and failure table: [`azurereadme.md`](azurereadme.md).
-
-### 2c. Host the app on a VM (generation still Azure)
-
-Use this when you want the laptop free of Docker/RAM load.
-
-1. On a Linux VM (CPU is fine): install Docker + Python, clone the repo, copy the
-   PDF to `data/corpus/`.
-2. Start Chroma: `docker compose -f docker-compose.chroma.yml up -d`
-3. Set `.env` as in **2b** (`MODEL_PROVIDER=azure_openai`, Foundry vars,
-   `CHROMA_HOST=127.0.0.1`). Set `vector_store.backend: chroma` in `config.yaml`.
-4. `pip install -e ".[store,governance]"`, then `check_model_host` / `ask` / `chat`
-   as above.
-
-Do **not** run large Ollama models on a small CPU VM. Prefer Azure for generation.
-Step-by-step notes: [`azurereadme.md`](azurereadme.md).
-
-### Smoke tests (no model required)
-
 ```bash
+# optional checks
 python scripts/smoke_retrieval.py
 pytest -q
 ```
 
-### Embeddings
+Docker app image / optional LAN Ollama / team Chroma: see
+[`docker-compose.heinzy.yml`](docker-compose.heinzy.yml) (governance mount),
+[`docker-compose.chroma.yml`](docker-compose.chroma.yml),
+[`docker-compose.ollama.yml`](docker-compose.ollama.yml).
 
-Both ingest and retrieval embed with `fastembed` (`BAAI/bge-small-en-v1.5`) —
-core dependency, ~130MB, CPU-only, no API key. Same library both sides so
-vectors stay comparable. Falls back to a hash embedding (`HASH-FALLBACK`) only
-if `fastembed` fails to import.
-
-### Docker — Heinzy app image (S2)
-
-```bash
-docker build -t heinzy .
-docker run --rm heinzy          # runs the retrieval smoke test
-```
-
-Build installs the `store` extra and pre-warms the `fastembed` cache. No model
-weights are baked in — set `MODEL_PROVIDER` / Azure or Ollama env vars when you
-run generation in the container.
-
-### Shared Chroma host (S4) — optional team DB
-
-**One shared Chroma Docker service**; clients set `CHROMA_HOST`. Default in
-`config.yaml` is `chroma`; use `memory` for offline work.
-
-| Role | What they do |
-|------|----------------|
-| **Host operator** | Runs [`docker-compose.chroma.yml`](docker-compose.chroma.yml), opens firewall TCP **8000** (Private) if teammates connect over LAN |
-| **Everyone else** | `pip install -e ".[store]"`, set `CHROMA_HOST=<host-ip>`, `vector_store.backend: chroma` |
-
-```bash
-docker compose -f docker-compose.chroma.yml up -d
-curl http://127.0.0.1:8000/api/v2/heartbeat
-python scripts/smoke_store.py
-```
-
-Do not expose `:8000` to the public internet.
-
-### Ask a real question end to end
-
-With `.env` configured (Ollama **or** Azure) and a PDF in `data/corpus/`:
-
-```bash
-python scripts/ask_handbook.py --query "how many electives can I take?"
-python scripts/chat.py   # interactive
-```
-
-First run ingests; later runs against the same store skip re-ingest when
-`store.has_doc()` is true (Chroma). Tip: include **MISM** in the question when
-retrieval feels weak — embeddings match handbook wording.
+Tip: include **MISM** in questions when retrieval feels weak.
 
 ---
 
@@ -422,123 +341,22 @@ retrieval log record and (later) every eval result, so any run is reproducible.
 python heinzy/common/config.py   # prints version, config_hash, key values
 ```
 
----
 
-## Layout
+### Governance PEP (Docker)
 
-```
-config.yaml              # single source of truth for all knobs (S5)
-heinzy/
-  common/config.py       # config loader + config_hash (S5)
-  ingest/                # ingestion pipeline, M0–M6 (task A1) — done
-    registry.py          #   M0 hash PDFs -> doc_id
-    extract.py           #   M1 PDF -> per-page text
-    structure.py         #   M2 pages -> section-aware blocks
-    chunk.py             #   M3 blocks -> chunks
-    embed.py             #   M4 chunks -> vectors
-    index.py             #   M5 vectors -> collection
-    verify.py            #   M6 sanity checks
-    types.py             #   shared record types + pre/post contracts
-  retrieval/             # retrieval layer (task A2) — done
-    retrieve.py          #   question -> top-k chunks, k from config
-    embedder.py          #   fastembed (same as ingest's, for compatible vectors)
-    store.py             #   VectorStore protocol + in-memory/chroma adapters
-    stores/chroma_store.py  #   Chroma HTTP adapter
-  generation/             # generation layer (task A3) — done
-    generator.py          #   chunks -> grounded answer via Ollama or Azure
-    grounding.py          #   citation extraction + retrieved-set check
-    abstain.py            #   Layer 2, the insufficient-context sentinel
-    policy.py             #   Layer 1 as a policy rule, builtin or AGT engine
-  eval/
-    abstention.py         #   out-of-corpus refusal eval + fixture store
-  pipeline.py             # shared ingest-and-populate-store orchestration
-eval/
-  abstention_questions.yaml  # 8 out-of-corpus + 5 in-corpus control questions
-  fixture_corpus.yaml        # labelled stand-in corpus (NOT the real handbook)
-scripts/
-  ask_handbook.py         # ingest + retrieve + generate, one question via --query
-  chat.py                 # same, interactive
-  eval_abstention.py      # proves the refusal claim; non-zero exit on failure
-  check_model_host.py     # Ollama or Azure generation host health check
-  calibrate_floor.py      # is a score floor viable on this corpus?
-  smoke_retrieval.py      # placeholder-chunk demo, no real data needed
-  smoke_store.py          # store factory smoke (memory or chroma)
-tests/test_retrieval.py      # locks the retrieval contract
-tests/test_store.py          # locks S4 get_store / adapter contract
-tests/test_generation_grounding.py  # locks the refusal + citation contract
-tests/test_policy_abstain.py        # locks the Layer 1 policy + fail-closed contract
-azurereadme.md               # Azure AI Foundry / OpenAI runbook
-docker-compose.ollama.yml    # optional local/LAN Ollama (GPU recommended)
-docker-compose.chroma.yml    # shared Chroma host for the team (S4)
-docker-compose.heinzy.yml    # app + mount feature/governance-policies src/policies (PEP)
-heinzy/governance/           # loader for mounted OllamaGovernanceInterceptor
-heinzy/tools/                # tool runners behind the PEP
-data/corpus/             # MISM PDFs go here (gitignored, shared out of band — S6)
-data/index/              # built indexes (gitignored)
-```
-
----
-
-## Ownership & what's done
-
-| Area | Status | Notes |
-|------|--------|-------|
-| Config system (S5) | ✅ done | `config.yaml` + loader + hash |
-| Ingestion (A1) | ✅ done | M0–M6 implemented, `verify()` clean on the real handbook |
-| Retrieval (A2) | ✅ done | config-driven `k`, provenance on every hit, tests green |
-| Vector-store seam (S4) | ✅ memory + chroma | `InMemoryStore` default; shared Chroma via `docker-compose.chroma.yml` + `ChromaStore` HttpClient |
-| Docker (S2) | ✅ done | pinned base + deps |
-| Generation host (S3) | ✅ Azure or local Ollama | \MODEL_PROVIDER=azure_openai\ or \ollama\; see [\zurereadme.md\](azurereadme.md) |
-| Generation/answering (A3) | ✅ done | grounded answers via configured provider |
-| Grounded answering + abstention (A3) | ✅ done | two-layer refusal, citation check, eval harness |
-| Citations (A4) | 🟡 checked, not rendered | cited sections verified against the retrieved set; provenance flows from retrieval |
-| Event log (A5) | ⬜ not started | append-only audit log (out of scope on this branch) |
-| Eval harness (A6) | ⬜ not started | owner: Lisa |
-| Governance layer | 🟡 mount-ready | PEP (`OllamaGovernanceInterceptor`) on `feature/governance-policies` — mount via [`docker-compose.heinzy.yml`](docker-compose.heinzy.yml); tool runners gated on this branch |
-
-### Governance PEP mount (Docker)
-
-The governance branch is **not** merged or edited from here. Mount a worktree at runtime:
+Same worktree as in [How to run](#1-clone-governance-worktree-install). With Docker:
 
 ```bash
-git worktree add ../AIGovernance-governance feature/governance-policies
-
 docker compose -f docker-compose.heinzy.yml build
 GOVERNANCE_HOST_PATH=../AIGovernance-governance docker compose -f docker-compose.heinzy.yml run --rm heinzy
 ```
 
-Inside the container: `GOVERNANCE_SRC=/governance/src` and `GOVERNANCE_POLICY_PATH=/governance/policies/governance_policy.yaml`. When those are set, `Generator` advertises tools and every tool call goes through `OllamaGovernanceInterceptor.evaluate_tool_call` before stub runners in `heinzy/tools/`.
-
-Local (no Docker): set `GOVERNANCE_SRC` / `GOVERNANCE_POLICY_PATH` in `.env` to the same worktree paths (see `.env.template`).
-
 ### Swapping vector-store backends
 
-Retrieval talks only to the `VectorStore` protocol. To use the shared Chroma host:
-1. Host runs `docker-compose.chroma.yml`.
-2. Clients `pip install -e ".[store]"` and set `CHROMA_HOST` in `.env`.
-3. Set `vector_store.backend: chroma` in `config.yaml` (no retrieval code changes).
+Retrieval talks only to the `VectorStore` protocol. For Chroma: run
+`docker-compose.chroma.yml`, set `CHROMA_HOST` in `.env`, and
+`vector_store.backend: chroma` in `config.yaml`.
 
-To add another DB later: implement the protocol, register one branch in
-`get_store()`, point `backend` at it.
-
-### Note on infrastructure
-
-We are using **Git only** — CMU Box / SVN is not required for this project.
-Shared artifacts (corpus PDFs, built indexes) are exchanged out of band and kept
-out of the repo (see `.gitignore`), per infra task S6.
-
----
-
-## Branch & review convention
-
-- `main` is protected; no direct pushes.
-- Branch naming: `feature/<area>-<short-desc>` (e.g. `feature/retrieval-scorefloor`),
-  `fix/<short-desc>`.
-- Open a PR into `main`; at least one teammate review before merge.
-- Keep tunables in `config.yaml`, never as literals in source (S5).
-- Nothing secret is committed — use `.env` (copy from `.env.template`).
-
----
 
 ## Environment
 
