@@ -92,8 +92,13 @@ python -m heinzy.webui.app
 ```
 
 Uses the same `.env` / store / model as the CLI (Ollama or Azure). First load
-may ingest the PDF. Optional Docker UI (passes Azure env from `.env` too):
-`docker compose -f docker-compose.webui.yml up --build`.
+may ingest the PDF. Optional Docker UI (Azure env + governance mount like
+`docker-compose.heinzy.yml`):
+
+```bash
+GOVERNANCE_HOST_PATH=../AIGovernance-governance \
+  docker compose -f docker-compose.webui.yml up --build
+```
 
 ```bash
 # optional checks

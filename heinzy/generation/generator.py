@@ -315,6 +315,9 @@ class Generator:
                 "messages": clean_messages,
                 "temperature": self.temperature,
             }
+        # Match Ollama: pin sampling from config so Azure evals are reproducible.
+        if self.seed is not None:
+            payload["seed"] = self.seed
         if tools:
             payload["tools"] = tools
         resp = requests.post(

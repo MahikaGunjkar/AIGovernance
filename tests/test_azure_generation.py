@@ -105,6 +105,8 @@ def test_azure_plain_chat_sends_foundry_url_and_api_key(cfg, azure_env, monkeypa
     assert calls[0]["url"].endswith("/openai/v1/chat/completions")
     assert calls[0]["headers"]["api-key"] == "test-key"
     assert calls[0]["payload"]["model"] == "test-deploy"
+    assert calls[0]["payload"]["temperature"] == 0.0
+    assert calls[0]["payload"]["seed"] == 0
     assert "tools" not in calls[0]["payload"]
 
 
