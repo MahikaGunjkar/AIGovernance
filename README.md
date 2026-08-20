@@ -81,6 +81,16 @@ python scripts/ask_handbook.py --query "What does the MISM curriculum cover?"
 python scripts/chat.py
 ```
 
+**Web UI** (browser chat at http://localhost:5000):
+
+```bash
+pip install -e ".[webui]"
+python -m heinzy.webui.app
+```
+
+Uses the same `.env` / store / model as the CLI. First load may ingest the PDF.
+Optional Docker UI: `docker compose -f docker-compose.webui.yml up --build`.
+
 ```bash
 # optional checks
 python scripts/smoke_retrieval.py

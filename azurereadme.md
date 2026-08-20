@@ -53,6 +53,16 @@ python scripts/ask_handbook.py --query "What does the MISM curriculum cover?"
 python scripts/chat.py
 ```
 
+**Web UI** (http://localhost:5000):
+
+```bash
+pip install -e ".[webui]"
+python -m heinzy.webui.app
+```
+
+Same `.env` as the CLI. On a VM, tunnel if needed:  
+`ssh -L 5000:127.0.0.1:5000 user@vm` then open http://localhost:5000 locally.
+
 ---
 
 ## Troubleshooting
