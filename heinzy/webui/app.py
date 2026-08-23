@@ -8,9 +8,11 @@ chat history you see is a visual log rendered in the browser (ticket #18 adds
 localStorage persistence on the client side).
 
 Same env-var configuration as the CLI:
-    CHROMA_HOST      — vector store host (used via config.yaml)
-    MODEL_ENDPOINT   — Ollama/Gemma host
-    MODEL_TAG        — override the configured model tag
+    CHROMA_HOST           — vector store host (used via config.yaml)
+    MODEL_PROVIDER        — ollama (default) or azure_openai
+    MODEL_ENDPOINT        — Ollama host when provider=ollama
+    MODEL_TAG             — override the configured model tag
+    AZURE_OPENAI_*        — when provider=azure_openai (see docs/azure.md)
 
 Run from repo root:
     pip install -e ".[webui]"

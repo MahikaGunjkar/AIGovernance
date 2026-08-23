@@ -1,16 +1,21 @@
 # Web UI service (tickets #17 / #18).
 #
 # Runs the Flask RAG chat UI in the same image as the rest of the app, wired to
-# the shared Chroma and Gemma hosts through the SAME env vars the CLI uses. No
-# new setup burden: set CHROMA_HOST and MODEL_ENDPOINT (and optionally
-# MODEL_TAG) in your .env, then:
+# the SAME env vars the CLI uses (Ollama or Azure). Governance mounts match
+# docker-compose.heinzy.yml (host paths rewritten to /governance/... inside).
+#
+# Setup (once), same as heinzy compose:
+#   git worktree add ../AIGovernance-governance feature/governance-policies
 #
 #     docker compose -f docker-compose.webui.yml up --build
 #     # open http://localhost:5000
 #
+# Ollama: MODEL_PROVIDER=ollama + MODEL_ENDPOINT
+# Azure:  MODEL_PROVIDER=azure_openai + AZURE_OPENAI_*
+#
 # The corpus must be reachable the same way ask_handbook.py needs it: either the
 # shared Chroma already has the handbook indexed, or data/corpus/ is mounted so
-# first request ingests it. Mount is included below.
+# first request ingests it.
 
 services:
   heinzy-ui:
@@ -21,18 +26,26 @@ services:
     ports:
       - "5000:5000"
     environment:
-      # Same configuration surface as the CLI — nothing new to learn.
-      CHROMA_HOST: "${CHROMA_HOST}"        # LAN IP / host of the shared Chroma
-      MODEL_ENDPOINT: "${MODEL_ENDPOINT}"  # http://<gemma-host>:11434
-      MODEL_TAG: "${MODEL_TAG:-}"          # optional override of config model.tag
+      CHROMA_HOST: "${CHROMA_HOST}"
+      MODEL_PROVIDER: "${MODEL_PROVIDER:-ollama}"
+      MODEL_ENDPOINT: "${MODEL_ENDPOINT:-}"
+      MODEL_TAG: "${MODEL_TAG:-}"
+      MODEL_BASIC_AUTH: "${MODEL_BASIC_AUTH:-}"
+      AZURE_OPENAI_ENDPOINT: "${AZURE_OPENAI_ENDPOINT:-}"
+      AZURE_OPENAI_API_KEY: "${AZURE_OPENAI_API_KEY:-}"
+      AZURE_OPENAI_DEPLOYMENT: "${AZURE_OPENAI_DEPLOYMENT:-}"
+      AZURE_OPENAI_API_VERSION: "${AZURE_OPENAI_API_VERSION:-2024-10-21}"
+      # In-container paths (not host GOVERNANCE_* from .env)
+      GOVERNANCE_SRC: /governance/src
+      GOVERNANCE_POLICY_PATH: /governance/policies/governance_policy.yaml
+      PYTHONPATH: /governance/src
       HEINZY_UI_HOST: "0.0.0.0"
       HEINZY_UI_PORT: "5000"
     volumes:
-      # So first-request ingestion can see the handbook PDFs (gitignored, shared
-      # out of band). Harmless if the shared Chroma already has them indexed —
-      # pipeline skips already-indexed docs via store.has_doc().
       - ./data/corpus:/app/data/corpus:ro
-    # If Chroma/Gemma run as compose services on the same network instead of
+      - ${GOVERNANCE_HOST_PATH:-../AIGovernance-governance}/src:/governance/src:ro
+      - ${GOVERNANCE_HOST_PATH:-../AIGovernance-governance}/policies:/governance/policies:ro
+      - ./data/audit:/app/data/audit
+    # If Chroma/Ollama run as compose services on the same network instead of
     # external hosts, add them here and set CHROMA_HOST / MODEL_ENDPOINT to the
-    # service names. As written this targets external shared hosts (the team's
-    # current S3/S4 pattern).
+    # service names. As written this targets external shared hosts (or Azure).

@@ -49,16 +49,14 @@ vector_store:
   collection: "heinzy"
 
 # ---- Generation model (S3) -------------------------------------------------
-# Recorded for reproducibility + stamped into eval output. The model is served
-# on the shared Colab Ollama host (notebooks/colab_gemma_ollama_host.ipynb);
-# teammates only set MODEL_ENDPOINT (ephemeral ngrok HTTPS URL). Retrieval does
-# not call this. Optional LAN fallback: docker-compose.ollama.yml.
-# on the shared Ollama host; teammates only set MODEL_ENDPOINT. Retrieval does
-# not call this.
+# Recorded for reproducibility + stamped into eval output. Provider is chosen
+# with MODEL_PROVIDER in .env (ollama | azure_openai) — see docs/azure.md.
+# Retrieval does not call this endpoint.
 model:
-  tag: "gemma3:12b"           # Ollama "Gemma 12B" = gemma3:12b (gemma2 has no 12b)
-  quantization: "Q4_K_M"      # Ollama default quant for these tags
-  endpoint: "${MODEL_ENDPOINT}"   # filled from env, never committed
+  tag: "gemma3:12b"           # Ollama tag; with Azure, stamp via AZURE_OPENAI_DEPLOYMENT / MODEL_TAG
+  quantization: "Q4_K_M"      # Ollama quant (ignored for azure_openai)
+  endpoint: "${MODEL_ENDPOINT}"   # Ollama only; Azure uses AZURE_OPENAI_ENDPOINT
+  # Provider is env-only (MODEL_PROVIDER=ollama|azure_openai) so secrets stay out of this file.
 
 # ---- Grounded answering / abstention -----------------------------------------
 # "Answer only from retrieved chunks, otherwise say you can't." Two layers:

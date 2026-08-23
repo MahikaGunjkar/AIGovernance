@@ -1,8 +1,9 @@
 # Heinzy — reproducible image (Infra task S2)
 # Pinned base + pinned deps so two machines produce identical dependency trees.
-# This image runs the retrieval/ingest Python code. The Gemma 12B model is
-# served SEPARATELY (task S3) — this container talks to it over MODEL_ENDPOINT,
-# it does not bundle the weights.
+# This image runs the retrieval/ingest Python code. Generation is remote:
+#   MODEL_PROVIDER=ollama      → MODEL_ENDPOINT (local/LAN Ollama)
+#   MODEL_PROVIDER=azure_openai → AZURE_OPENAI_* (Azure AI Foundry / OpenAI)
+# Weights are never bundled in this image.
 
 FROM python:3.11-slim-bookworm
 
@@ -18,10 +19,9 @@ WORKDIR /app
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Now the source. Install with the `store` extra so the Chroma thin client is
-# available (config.yaml's default vector_store.backend is chroma).
+# Now the source. store = Chroma thin client; webui = Flask for heinzy.webui.
 COPY . .
-RUN pip install --no-cache-dir -e ".[store]"
+RUN pip install --no-cache-dir -e ".[store,webui]"
 
 # Pre-warm the fastembed model cache at build time (reads the tag straight out
 # of the checked-in config.yaml, not hardcoded here) so containers don't pay a
